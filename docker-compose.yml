@@ -1,20 +1,45 @@
-version: '3.8'
-
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
+    # Run as host user to match X11 socket permissions
+    user: "1000:100"
     volumes:
       # Mount current directory so you can edit code without rebuilding
       - .:/app
       # Persist Python cache
-      - pip-cache:/root/.cache/pip
+      - pip-cache:/home/user/.cache/pip
+      # Wayland socket for GUI apps
+      - ${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY:-wayland-0}:/tmp/${WAYLAND_DISPLAY:-wayland-0}
+      # X11 fallback (XWayland) for apps that don't support Wayland
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # X11 authentication - mount host's xauth file
+      # - ./.Xauthority.docker:/home/user/.Xauthority:rw
+      - ./.Xauthority.docker:/home/user/.Xauthority:ro
+    environment:
+      # Wayland environment
+      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}
+      - XDG_RUNTIME_DIR=/tmp
+      # X11 fallback
+      - DISPLAY=${DISPLAY}
+      # Qt and other toolkits - OpenCV's bundled Qt doesn't support Wayland, use X11
+      - QT_QPA_PLATFORM=xcb
+      - GDK_BACKEND=x11
+      # Set HOME for the user
+      - HOME=/home/user
     working_dir: /app
     # Keep container running for interactive work
     stdin_open: true
     tty: true
     command: /bin/bash
+    # Network mode for better compatibility
+    network_mode: host
+    # IPC for X11
+    ipc: host
+    # Security options to allow X11 access
+    security_opt:
+      - seccomp:unconfined
 
 volumes:
   pip-cache:

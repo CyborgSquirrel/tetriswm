@@ -8,7 +8,21 @@ WORKDIR /app
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y \
-    git
+    git \
+    # GUI support for visualization
+    python3-tk \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1
+
+# Create virtual environment
+RUN python -m venv /opt/venv
+
+# Activate venv by modifying PATH
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy requirements first for better caching
 COPY requirements.txt .

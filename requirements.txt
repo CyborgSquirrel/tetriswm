@@ -4,6 +4,8 @@ pandas
 matplotlib
 scipy
 
+tetris-gymnasium
+
 # Deep learning (uncomment/modify based on your needs)
 # torch
 # torchvision
