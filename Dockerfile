@@ -13,6 +13,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     # Python
         python3-tk \
         python3-opencv \
+        python3-pil \
     # Graphics
         # libgl1-mesa-glx \
         libglib2.0-0 \
@@ -27,24 +28,32 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         qtwayland5 \
         libqt5waylandclient5
 
+# Create user matching host user (1000:100) for GUI access
+RUN useradd -m -u 1000 -g 100 -s /bin/bash user
+RUN mkdir -p /home/user && chown 1000:100 /home/user
+
+USER 1000:100
+# && \
+    # chown -R 1000:100 /opt/venv /app
+
 # Create virtual environment
-RUN python -m venv /opt/venv
+RUN python -m venv /home/user/venv
+
+# RUN stat /home/user && stat /home/user/.cache
+
+ENV PATH="/home/user/.local/bin:$PATH"
 
 # Activate venv by modifying PATH
-ENV PATH="/opt/venv/bin:$PATH"
+ENV PATH="/home/user/venv:$PATH"
 
 # Copy requirements first for better caching
-COPY requirements.txt .
-RUN --mount=type=cache,target=/root/.cache/pip \
+COPY --chown=1000:100 requirements.txt .
+# RUN mkdir -p /home/user/.cache/pip
+RUN --mount=type=cache,target=/home/user/.cache/pip \
     pip install -r requirements.txt
 
-# Create user matching host user (1000:100) for GUI access
-RUN useradd -m -u 1000 -g 100 -s /bin/bash user && \
-    chown -R 1000:100 /opt/venv /app
-
 # Copy the rest of the application
-COPY . .
-RUN chown -R 1000:100 /app
+COPY --chown=1000:100 . .
 
 # Set entrypoint
 # ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

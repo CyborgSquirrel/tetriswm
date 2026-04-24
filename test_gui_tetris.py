@@ -4,11 +4,19 @@ import sys
 
 import cv2
 import gymnasium as gym
+from tetris_gymnasium.components.tetromino_queue import TetrominoQueue
+from tetris_gymnasium.components.tetromino_randomizer import BagRandomizer
 from tetris_gymnasium.envs import Tetris
 
 if __name__ == "__main__":
     # Create an instance of Tetris
-    env = gym.make("tetris_gymnasium/Tetris", render_mode="human")
+    env = gym.make(
+        "tetris_gymnasium/Tetris",
+        render_mode="human",
+        queue=TetrominoQueue(
+            randomizer=BagRandomizer(),
+        ),
+    )
     env.reset(seed=42)
 
     # Main game loop

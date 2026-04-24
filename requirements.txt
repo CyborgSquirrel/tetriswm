@@ -16,4 +16,7 @@ tqdm
 jupyter
 ipython
 
+# LSP server for editor integration
+python-lsp-server[all]
+
 # Add your specific dependencies below
