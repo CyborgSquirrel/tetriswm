@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+
+sshpass -f ssh-pass.key ssh student@"$( cat ssh-addr.key )" "$@"

@@ -1,0 +1,17 @@
+# Core ML libraries
+numpy
+pandas
+matplotlib
+scipy
+
+# Deep learning (uncomment/modify based on your needs)
+# torch
+# torchvision
+# torchaudio
+
+# Utilities
+tqdm
+jupyter
+ipython
+
+# Add your specific dependencies below
