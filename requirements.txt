@@ -4,12 +4,16 @@ pandas
 matplotlib
 scipy
 
+# Tetris environment
 tetris-gymnasium
 
-# Deep learning (uncomment/modify based on your needs)
-# torch
-# torchvision
-# torchaudio
+# Deep learning
+torch
+torchvision
+
+# LeWM architecture
+timm       # ViT-Tiny encoder
+einops     # tensor reshaping
 
 # Utilities
 tqdm
@@ -18,5 +22,3 @@ ipython
 
 # LSP server for editor integration
 python-lsp-server[all]
-
-# Add your specific dependencies below
