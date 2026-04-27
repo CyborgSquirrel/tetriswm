@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+[ -f /app/wandb.key ] || {
+  echo "Missing wandb key, can't login"
+  exit 0
+}
+
+wandb login "$( cat /app/wandb.key )"

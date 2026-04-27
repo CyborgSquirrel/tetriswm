@@ -18,6 +18,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     libxrender1 \
     libgomp1
 
+# Install uv
+RUN pip install uv
+
 # Create virtual environment
 RUN python -m venv /opt/venv
 
@@ -26,8 +29,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy requirements first for better caching
 COPY requirements.txt .
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install -r requirements.txt
 
 # Copy the rest of the application
 COPY . .

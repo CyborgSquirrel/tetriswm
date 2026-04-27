@@ -1,119 +1,85 @@
-"""
-Trajectory data collection for LeWorldModel training.
-
-Data format (per trajectory, stored in dest_dir/):
-  {traj}-{step}-im.png    — frame observed BEFORE taking the action at this step
-  {traj}-{step}-meta.json — {"action": int, "reward": float, "game_over": bool}
-  {traj}-{T}-im.png       — terminal frame (game over / truncated), no meta file
-
-WHY this convention (action = action taken FROM this state):
-  LeWM predicts emb[t+1] from (emb[t], action[t]).
-  action[t] must be the action that transitions FROM state t TO state t+1.
-  The previous convention stored "action that led TO state t", which is off by one.
-"""
-
-import argparse
 import json
-import os
-from pathlib import Path
-
-import numpy as np
 from PIL import Image
+import os.path
+import os
+
+import gymnasium as gym
+import numpy as np
+from tetris_gymnasium.components.tetromino import Tetromino
 from tetris_gymnasium.envs import Tetris
-from tqdm import tqdm
+import h5py
 
-
-def collect_one_trajectory(env, rng, max_steps: int):
-    """
-    Run one episode and return (frames, actions, rewards, dones).
-
-    frames[t]  = observation BEFORE action[t]
-    frames[-1] = terminal observation (no action taken from it)
-    """
-    frames, actions, rewards, dones = [], [], [], []
-
-    env.reset(seed=int(rng.integers(0, 2**32 - 1)))
-
-    for _ in range(max_steps):
-        frame = env.render()          # observe BEFORE acting
-        action = env.action_space.sample()
-        _, reward, game_over, truncated, _ = env.step(action)
-
-        frames.append(frame)
-        actions.append(int(action))
-        rewards.append(float(reward))
-        dones.append(bool(game_over or truncated))
-
-        if game_over or truncated:
-            break
-
-    # Append the terminal observation (no action taken from here)
-    frames.append(env.render())
-
-    return frames, actions, rewards, dones
-
-
-def save_trajectory(frames, actions, rewards, dones, traj_idx: int, dest_dir: Path):
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
-    for step, (frame, action, reward, done) in enumerate(
-        zip(frames[:-1], actions, rewards, dones)
-    ):
-        # Save frame
-        Image.fromarray(frame).save(dest_dir / f"{traj_idx}-{step}-im.png")
-        # Save meta: action taken FROM this state
-        with open(dest_dir / f"{traj_idx}-{step}-meta.json", "w") as f:
-            json.dump({"action": action, "reward": reward, "game_over": done}, f)
-
-    # Save terminal frame (no meta — no action taken from terminal state)
-    terminal_step = len(actions)
-    Image.fromarray(frames[-1]).save(dest_dir / f"{traj_idx}-{terminal_step}-im.png")
-
-
-def already_done(traj_idx: int, dest_dir: Path) -> bool:
-    """Skip trajectories that were already generated (allows resuming)."""
-    return any(dest_dir.glob(f"{traj_idx}-*-im.png"))
-
+# TODO: better game layout that is more economical resolution-wise
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dest",       default="data/train",
-                        help="Output directory")
-    parser.add_argument("--n_traj",     type=int, default=5000,
-                        help="Number of trajectories to generate")
-    parser.add_argument("--max_steps",  type=int, default=200,
-                        help="Max steps per trajectory (episode ends early on game over)")
-    parser.add_argument("--seed",       type=int, default=42)
-    args = parser.parse_args()
+  tetrominoes = [
+    # I
+    Tetromino(
+      0,
+      [0, 240, 240],
+      np.array(
+        [[0, 0, 0, 0], [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0]], dtype=np.uint8
+      ),
+    ),
+  ]
 
-    dest_dir = Path(args.dest)
-    rng = np.random.default_rng(seed=args.seed)
+  # Create an instance of Tetris
+  env = gym.make(
+    "tetris_gymnasium/Tetris",
+    render_mode="rgb_array",
+    tetrominoes=tetrominoes,
+  )
+  env: Tetris
 
-    # Use all 7 standard tetrominoes (default env)
-    env = Tetris(render_mode="rgb_array")
-    n_actions = env.action_space.n
-    env.reset()
-    print(f"Action space: Discrete({n_actions})")
-    print(f"Frame shape:  {env.render().shape}")
-    print(f"Generating {args.n_traj} trajectories → {dest_dir}/")
+  rng: np.random.Generator = np.random.default_rng(seed=42)
 
-    skipped = 0
-    for traj_idx in tqdm(range(args.n_traj), desc="trajectories"):
-        if already_done(traj_idx, dest_dir):
-            skipped += 1
-            continue
+  # print(env.unwrapped.actions)
 
-        frames, actions, rewards, dones = collect_one_trajectory(
-            env, rng, args.max_steps
-        )
-        save_trajectory(frames, actions, rewards, dones, traj_idx, dest_dir)
+  out_path = "data/traj_overfit.h5"
+  traj_num = 1
+  traj_len = 15
 
-    env.close()
+  data = {}
+  data["pixels"] = []
+  data["action"] = []
 
-    n_files = len(list(dest_dir.glob("*-im.png")))
-    print(f"\nDone. {n_files} frames saved to {dest_dir}/  (skipped {skipped} existing)")
-    print(f"Update train.py --n_actions to {n_actions} if needed.")
+  # meta = {}
+  for traj_idx in range(traj_num):
+    env.reset(seed=rng.integers(0,2**32-1).item())
+    for step_idx in range(traj_len):
+      # NOTE(andrei): Seems like the active Tetromino mask is not as precise as
+      # I would like. Maybe it would be better to write our own Tetris
+      # implementation after all?
 
+      # im - H,W,C
+      pixels = env.render()
+      data["pixels"].append(pixels)
+
+      # TODO: Le-WM actions seem to range between [-1;1] in the training
+      # datasets, maybe do the same here.
+
+      # NOTE: Action taken in the current step, leading to the next step.
+      if step_idx >= traj_len-1:
+        action = 0
+      else:
+        true_action = env.action_space.sample()
+        action = true_action + 1  # NOTE: Saving 0 as trajectory splitter
+
+        # TODO: Maybe use this stuff for something.
+        _im, _reward, _game_over, _truncated, _info = env.step(true_action)
+
+      data["action"].append(action)
+
+  # Combine everything
+  data = {
+    key: np.stack(value, axis=0)
+    for key, value in data.items()
+  }
+
+  # Write to HDF5 file
+  with h5py.File(out_path, "w") as f:
+    for key, value in data.items():
+      f[key] = value
 
 if __name__ == "__main__":
-    main()
+  main()

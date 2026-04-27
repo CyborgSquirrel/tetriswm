@@ -12,13 +12,17 @@ torch
 torchvision
 
 # LeWM architecture
-timm       # ViT-Tiny encoder
-einops     # tensor reshaping
+# timm       # ViT-Tiny encoder
+# einops     # tensor reshaping
+stable-worldmodel[train,env]
 
 # Utilities
 tqdm
 jupyter
 ipython
+
+# Formats
+h5py # HDF5
 
 # LSP server for editor integration
 python-lsp-server[all]

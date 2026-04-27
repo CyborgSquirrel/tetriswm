@@ -31,3 +31,4 @@ Thumbs.db
 .Xauthority.docker
 
 /data
+/mounts

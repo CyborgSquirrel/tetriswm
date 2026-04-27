@@ -17,6 +17,8 @@ services:
       # X11 authentication - mount host's xauth file
       # - ./.Xauthority.docker:/home/user/.Xauthority:rw
       - ./.Xauthority.docker:/home/user/.Xauthority:ro
+
+      - ./mounts/.stable_worldmodel:/home/user/.stable_worldmodel:rw
     environment:
       # Wayland environment
       - WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}
