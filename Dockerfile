@@ -1,5 +1,11 @@
 FROM python:3.11-slim
 
+ARG UID
+ARG GID
+
+RUN test -n "$UID" || (echo "UID build arg is required" && exit 1)
+RUN test -n "$GID" || (echo "GID build arg is required" && exit 1)
+
 # Set working directory
 WORKDIR /app
 
@@ -11,7 +17,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         build-essential \
         git \
         swig \
-        vim \
+        neovim \
     # Python
         python3-tk \
         python3-opencv \
@@ -30,14 +36,17 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         qtwayland5 \
         libqt5waylandclient5
 
-# Create user matching host user (1000:100) for GUI access
-RUN useradd -m -u 1000 -g 100 -s /bin/bash user
-RUN mkdir -p /home/user && chown 1000:100 /home/user
+# Create user matching host user
+RUN useradd -m -u "$UID" -g "$GID" -s /bin/bash user
+RUN mkdir -p /home/user && chown "$UID:$GID" /home/user
 
-USER 1000:100
+USER $UID:$GID
+
+RUN mkdir -p /home/user/.cache
 
 # Install uv
-RUN mount=type=cache,uid=1000,gid=100,target=/home/user/.cache/pip pip install uv
+RUN --mount=type=cache,uid=$UID,gid=$GID,target=/home/user/.cache/pip \
+    pip install uv
 
 ENV UV_PYTHON_CACHE_DIR=/home/user/.cache/uv
 
@@ -52,8 +61,8 @@ ENV PATH="/home/user/.local/bin:$PATH"
 ENV PATH="/home/user/venv/bin:$PATH"
 
 # Copy requirements first for better caching
-COPY --chown=1000:100 requirements.txt .
-RUN --mount=type=cache,uid=1000,gid=100,target=/home/user/.cache/uv \
+COPY --chown=$UID:$GID requirements.txt .
+RUN --mount=type=cache,uid=$UID,gid=$GID,target=/home/user/.cache/uv \
        uv pip install -r requirements.txt \
        # NOTE: outdated `datasets` gets installed for some reason, so forcefully
        # upgrading it
@@ -61,7 +70,7 @@ RUN --mount=type=cache,uid=1000,gid=100,target=/home/user/.cache/uv \
     && :
 
 # Copy the rest of the application
-COPY --chown=1000:100 . .
+COPY --chown=$UID:$GID . .
 
 # Set entrypoint
 ENTRYPOINT ["/app/entrypoint.sh"]

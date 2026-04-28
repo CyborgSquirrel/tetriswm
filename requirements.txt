@@ -5,7 +5,9 @@ matplotlib
 scipy
 
 # Tetris environment
-tetris-gymnasium
+# tetris-gymnasium
+# NOTE: Using a fork with some fixes
+git+https://github.com/CyborgSquirrel/Tetris-Gymnasium@main
 
 # Deep learning
 torch

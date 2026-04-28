@@ -10,7 +10,7 @@
 ./setup_x11.py
 
 # Build and start the container
-docker-compose up -d
+UID=$(id -u) GID=$(id -g) docker-compose up -d
 
 # Enter the container
 docker-compose exec app /bin/bash

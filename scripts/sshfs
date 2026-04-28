@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+mount_path="/home/$USER/cluster"
+
+mkdir -p "$mount_path"
+sshfs -o password_stdin student@"$( cat ssh-addr.key )":/home/student "$mount_path" <<< "$( cat ssh-pass.key )"

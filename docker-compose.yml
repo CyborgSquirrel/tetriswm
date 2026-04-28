@@ -3,8 +3,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    # Run as host user to match X11 socket permissions
-    user: "1000:100"
+      args:
+        UID: ${UID:-}
+        GID: ${GID:-}
     volumes:
       # Mount current directory so you can edit code without rebuilding
       - .:/app
