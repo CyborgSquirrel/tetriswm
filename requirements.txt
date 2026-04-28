@@ -7,7 +7,7 @@ scipy
 # Tetris environment
 # tetris-gymnasium
 # NOTE: Using a fork with some fixes
-git+https://github.com/CyborgSquirrel/Tetris-Gymnasium@main
+git+https://github.com/CyborgSquirrel/Tetris-Gymnasium@fixes
 
 # Deep learning
 torch

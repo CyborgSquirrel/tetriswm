@@ -4,8 +4,16 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        UID: ${UID:-}
-        GID: ${GID:-}
+        XUID: ${XUID:-}
+        XGID: ${XGID:-}
+        # DEVICE: ${DEVICE:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     volumes:
       # Mount current directory so you can edit code without rebuilding
       - .:/app
