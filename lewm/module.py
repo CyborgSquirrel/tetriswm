@@ -85,6 +85,132 @@ class Attention(nn.Module):
         return self.to_out(out)
 
 
+class CrossAttention(nn.Module):
+    """Cross-attention from query tokens to context tokens."""
+
+    def __init__(self, dim, context_dim=None, heads=8, dim_head=64, dropout=0.0):
+        super().__init__()
+        context_dim = context_dim or dim
+        inner_dim = dim_head * heads
+        project_out = not (heads == 1 and dim_head == dim)
+        self.heads = heads
+        self.dropout = dropout
+        self.norm = nn.LayerNorm(dim)
+        self.context_norm = nn.LayerNorm(context_dim)
+        self.to_q = nn.Linear(dim, inner_dim, bias=False)
+        self.to_kv = nn.Linear(context_dim, inner_dim * 2, bias=False)
+        self.to_out = (
+            nn.Sequential(nn.Linear(inner_dim, dim), nn.Dropout(dropout))
+            if project_out
+            else nn.Identity()
+        )
+
+    def forward(self, x, context):
+        """
+        x: (B, P, D)
+        context: (B, N, C)
+        """
+        x = self.norm(x)
+        context = self.context_norm(context)
+        drop = self.dropout if self.training else 0.0
+        q = self.to_q(x)
+        k, v = self.to_kv(context).chunk(2, dim=-1)
+        q, k, v = (
+            rearrange(t, "b n (h d) -> b h n d", h=self.heads)
+            for t in (q, k, v)
+        )
+        out = F.scaled_dot_product_attention(q, k, v, dropout_p=drop)
+        out = rearrange(out, "b h n d -> b n (h d)")
+        return self.to_out(out)
+
+
+class DecoderBlock(nn.Module):
+    """Cross-attention decoder block with residual MLP."""
+
+    def __init__(self, dim, context_dim, heads, dim_head, mlp_dim, dropout=0.0):
+        super().__init__()
+        self.cross_attn = CrossAttention(
+            dim, context_dim=context_dim, heads=heads, dim_head=dim_head, dropout=dropout
+        )
+        self.mlp = FeedForward(dim, mlp_dim, dropout=dropout)
+        self.norm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
+
+    def forward(self, x, context):
+        x = x + self.cross_attn(x, context)
+        x = x + self.mlp(self.norm(x))
+        return x
+
+
+class ImageDecoder(nn.Module):
+    """Decode a LeWM latent vector into an RGB image for visualization."""
+
+    def __init__(
+        self,
+        *,
+        latent_dim,
+        image_size=224,
+        patch_size=16,
+        hidden_dim=256,
+        depth=4,
+        heads=8,
+        dim_head=64,
+        mlp_dim=1024,
+        dropout=0.0,
+        channels=3,
+    ):
+        super().__init__()
+        if image_size % patch_size != 0:
+            raise ValueError("image_size must be divisible by patch_size")
+
+        self.image_size = image_size
+        self.patch_size = patch_size
+        self.channels = channels
+        self.num_patches_side = image_size // patch_size
+        self.num_patches = self.num_patches_side**2
+        patch_dim = patch_size * patch_size * channels
+
+        self.latent_proj = nn.Sequential(
+            nn.LayerNorm(latent_dim),
+            nn.Linear(latent_dim, hidden_dim),
+        )
+        self.query_tokens = nn.Parameter(torch.randn(1, self.num_patches, hidden_dim))
+        self.blocks = nn.ModuleList(
+            [
+                DecoderBlock(
+                    hidden_dim,
+                    context_dim=hidden_dim,
+                    heads=heads,
+                    dim_head=dim_head,
+                    mlp_dim=mlp_dim,
+                    dropout=dropout,
+                )
+                for _ in range(depth)
+            ]
+        )
+        self.norm = nn.LayerNorm(hidden_dim)
+        self.to_patch = nn.Linear(hidden_dim, patch_dim)
+
+    def forward(self, latent):
+        """
+        latent: (B, D)
+        returns: (B, C, H, W)
+        """
+        context = self.latent_proj(latent).unsqueeze(1)
+        x = self.query_tokens.expand(latent.size(0), -1, -1)
+        for block in self.blocks:
+            x = block(x, context)
+        patches = self.to_patch(self.norm(x))
+        return rearrange(
+            patches,
+            "b (h w) (p1 p2 c) -> b c (h p1) (w p2)",
+            h=self.num_patches_side,
+            w=self.num_patches_side,
+            p1=self.patch_size,
+            p2=self.patch_size,
+            c=self.channels,
+        )
+
+
 class ConditionalBlock(nn.Module):
     """Transformer block with AdaLN-zero conditioning"""
 
