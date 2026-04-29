@@ -7,7 +7,7 @@ scipy
 # Tetris environment
 # tetris-gymnasium
 # NOTE: Using a fork with some fixes
-git+https://github.com/CyborgSquirrel/Tetris-Gymnasium@fixes
+# git+https://github.com/CyborgSquirrel/Tetris-Gymnasium@fixes
 
 # Deep learning
 torch
@@ -16,6 +16,7 @@ torchvision
 # LeWM architecture
 # timm       # ViT-Tiny encoder
 # einops     # tensor reshaping
+stable-baselines3>=2.0
 stable-worldmodel[train,env]
 
 # Utilities
@@ -28,3 +29,5 @@ h5py # HDF5
 
 # LSP server for editor integration
 python-lsp-server[all]
+
+pygame-ce

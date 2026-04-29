@@ -1,59 +1,40 @@
-import json
-from PIL import Image
+import argparse
 import os.path
 import os
 
-import gymnasium as gym
 import numpy as np
-from tetris_gymnasium.components.tetromino import Tetromino
-from tetris_gymnasium.envs import Tetris
+from tetris import tetris
 import h5py
 
-# TODO: better game layout that is more economical resolution-wise
+def parse_args():
+  p = argparse.ArgumentParser()
+  p.add_argument("out")
+  p.add_argument("--traj-num", type=int, default=1)
+  p.add_argument("--traj-len", type=int, default=50)
+  p.add_argument("--seed", type=int, default=42)
+  return p.parse_args()
 
 def main():
-  tetrominoes = [
-    # I
-    Tetromino(
-      0,
-      [0, 240, 240],
-      np.array(
-        [[0, 0, 0, 0], [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0]], dtype=np.uint8
-      ),
-    ),
-  ]
+  args = parse_args()
+  rng: np.random.Generator = np.random.default_rng(seed=args.seed)
 
-  # Create an instance of Tetris
-  env = gym.make(
-    "tetris_gymnasium/Tetris",
-    render_mode="rgb_array",
-    tetrominoes=tetrominoes,
-  )
-  env: Tetris
-
-  rng: np.random.Generator = np.random.default_rng(seed=42)
-
-  # print(env.unwrapped.actions)
-
-  out_path = "data/traj_overfit.h5"
-  traj_num = 1
-  traj_len = 15
+  out_path = args.out
+  traj_num = args.traj_num
+  traj_len = args.traj_len
 
   data = {}
   data["pixels"] = []
   data["action"] = []
 
+  actions = np.array(tetris.Action)
+
   # meta = {}
   for traj_idx in range(traj_num):
-    env.reset(seed=rng.integers(0,2**32-1).item())
+    env = tetris.Tetris()
     for step_idx in range(traj_len):
-      # NOTE(andrei): Seems like the active Tetromino mask is not as precise as
-      # I would like. Maybe it would be better to write our own Tetris
-      # implementation after all?
-
-      # im - H,W,C
+      # pixels - W,H,C
       pixels = env.render()
-      data["pixels"].append(pixels)
+      data["pixels"].append(pixels.transpose(1,0,2))
 
       # TODO: Le-WM actions seem to range between [-1;1] in the training
       # datasets, maybe do the same here.
@@ -62,13 +43,15 @@ def main():
       if step_idx >= traj_len-1:
         action = 0
       else:
-        true_action = env.action_space.sample()
+        true_action = rng.choice(actions)
         action = true_action + 1  # NOTE: Saving 0 as trajectory splitter
 
-        # TODO: Maybe use this stuff for something.
-        _im, _reward, _game_over, _truncated, _info = env.step(true_action)
+        env.step(true_action)
 
       data["action"].append(action)
+
+      if env.state == tetris.GameState.OVER:
+        break
 
   # Combine everything
   data = {

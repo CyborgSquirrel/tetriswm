@@ -1,10 +1,3 @@
-# ARG DEVICE=cpu # or gpu
-
-# FROM python:3.11-slim AS base-cpu
-# FROM nvidia/cuda:13.2.1-cudnn-runtime-ubuntu24.04 AS base-gpu
-
-# FROM base-${DEVICE} AS base
-
 FROM nvidia/cuda:13.1.1-cudnn-runtime-ubuntu24.04
 
 ARG XUID
@@ -26,47 +19,40 @@ RUN --mount=type=cache,dst=/var/cache/apt,sharing=locked \
         swig \
         curl \
         neovim \
-    # Python
-        python3 \
-        python3-tk \
-        python3-opencv \
-        python3-pil \
-        python3.12-venv \
-        python3.12-dev
-    # # Graphics
-    #     # libgl1-mesa-glx \
-    #     libglib2.0-0 \
-    #     libsm6 \
-    #     libxext6 \
-    #     libxrender1 \
-    #     libgomp1 \
-    # # Wayland support
-    #     libwayland-client0 \
-    #     libwayland-egl1 \
-    # # Qt Wayland plugin for OpenCV GUI
-    #     qtwayland5 \
-    #     libqt5waylandclient5
+    # Graphics
+        # libgl1-mesa-glx \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
+        libgomp1 \
+    # Wayland support
+        libwayland-client0 \
+        libwayland-egl1 \
+        qtwayland5 \
+        libqt5waylandclient5
+
+# Free up UID 1000
+RUN userdel -r ubuntu 2>/dev/null || true
 
 # Create user matching host group and user
 RUN \
        groupadd -f -g "$XGID" user \
-    && cat /etc/group \
     && useradd -m -u "$XUID" -g "$XGID" -s /bin/bash user
 
 USER $XUID:$XGID
-
-RUN mkdir -p /home/user/.cache
+ENV HOME="/home/user"
+ENV PATH="/home/user/.local/bin:$PATH"
+RUN \
+     mkdir -p /home/user/.cache \
+  && mkdir -p /home/user/.local
 
 # Install uv
 RUN --mount=type=bind,src=deps/uv/install.sh,dst=/bin/install_uv.sh /bin/install_uv.sh
 ENV UV_PYTHON_CACHE_DIR=/home/user/.cache/uv
 
 # Create virtual environment
-RUN python3 -m venv /home/user/venv
-
-# RUN stat /home/user && stat /home/user/.cache
-
-ENV PATH="/home/user/.local/bin:$PATH"
+RUN uv venv /home/user/venv
 
 # Activate venv by modifying PATH
 ENV PATH="/home/user/venv/bin:$PATH"
