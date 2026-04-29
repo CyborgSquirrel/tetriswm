@@ -1,7 +1,7 @@
 dataset:
   num_steps: ${eval:'${wm.num_preds} + ${wm.history_size}'}
   frameskip: 1
-  name: tetris
+  name: tetris_overfit
   keys_to_load:
     - pixels
     - action

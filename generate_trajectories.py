@@ -1,4 +1,5 @@
 import argparse
+import itertools as itt
 import os.path
 import os
 
@@ -25,13 +26,27 @@ def main():
   data = {}
   data["pixels"] = []
   data["action"] = []
+  data["ep_len"] = []
+  data["ep_idx"] = []
+  data["ep_offset"] = []
 
   actions = np.array(tetris.Action)
 
-  # meta = {}
+  ep_idx_it = 0
+  ep_offset_it = 0
+
   for traj_idx in range(traj_num):
     env = tetris.Tetris()
+
+    ep_idx = ep_idx_it
+    ep_idx_it += 1
+
+    ep_offset = ep_offset_it
     for step_idx in range(traj_len):
+      data["ep_idx"].append(ep_idx)
+
+      ep_offset_it += 1
+
       # pixels - W,H,C
       pixels = env.render()
       data["pixels"].append(pixels.transpose(1,0,2))
@@ -48,10 +63,14 @@ def main():
 
         env.step(true_action)
 
-      data["action"].append(action)
+      data["action"].append((float(action),))
 
       if env.state == tetris.GameState.OVER:
         break
+    ep_len = ep_offset_it - ep_offset
+
+    data["ep_len"].append(ep_len)
+    data["ep_offset"].append(ep_offset)
 
   # Combine everything
   data = {
@@ -62,7 +81,7 @@ def main():
   # Write to HDF5 file
   with h5py.File(out_path, "w") as f:
     for key, value in data.items():
-      f[key] = value
+      f.create_dataset(key, data=value, compression="gzip", compression_opts=4)
 
 if __name__ == "__main__":
   main()
