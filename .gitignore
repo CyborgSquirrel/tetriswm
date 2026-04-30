@@ -27,6 +27,10 @@ Thumbs.db
 *.key
 *.key.*
 
+# Ignore
+*.ign
+*.ign.*
+
 # Docker X11 auth
 .Xauthority.docker
 
