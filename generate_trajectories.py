@@ -1,4 +1,5 @@
 import argparse
+from einops import rearrange
 import itertools as itt
 import os.path
 import os
@@ -23,12 +24,18 @@ def main():
   traj_num = args.traj_num
   traj_len = args.traj_len
 
-  data = {}
-  data["pixels"] = []
-  data["action"] = []
-  data["ep_len"] = []
-  data["ep_idx"] = []
-  data["ep_offset"] = []
+  data = {
+    key: []
+    for key in [
+      "pixels",
+      "tetris_grid_mask",
+      "tetris_mino_mask",
+      "action",
+      "ep_len",
+      "ep_idx",
+      "ep_offset",
+    ]
+  }
 
   actions = np.array(tetris.Action)
 
@@ -47,9 +54,17 @@ def main():
 
       ep_offset_it += 1
 
-      # pixels - W,H,C
       pixels = env.render()
-      data["pixels"].append(pixels.transpose(1,0,2))
+      data["pixels"].append(rearrange(pixels, "w h c -> h w c"))
+
+      tetris_grid_mask = (env.grid.copy() != 0)
+      tetris_mino_mask = np.zeros_like(tetris_grid_mask)
+      if env.current is not None:
+        for x,y in env.current.coords:
+          tetris_mino_mask[x,y] = 1
+      tetris_grid_mask = tetris_grid_mask | tetris_mino_mask
+      data["tetris_grid_mask"].append(tetris_grid_mask.astype(np.uint8))
+      data["tetris_mino_mask"].append(tetris_mino_mask.astype(np.uint8))
 
       # TODO: Le-WM actions seem to range between [-1;1] in the training
       # datasets, maybe do the same here.

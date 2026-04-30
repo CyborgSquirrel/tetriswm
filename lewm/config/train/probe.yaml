@@ -1,0 +1,52 @@
+defaults:
+  - _self_
+  - data: tetris_probe
+
+output_model_name: lewm_tile_probe
+subdir: ${hydra:job.id}
+run_dir: null
+
+num_workers: 6
+train_split: 0.9
+seed: 3072
+img_size: 224
+
+trainer:
+  max_epochs: 50
+  devices: auto
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+
+loader:
+  batch_size: 64
+  num_workers: ${num_workers}
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+
+optimizer:
+  lr: 1e-3
+  weight_decay: 1e-4
+
+wandb:
+  enabled: False
+  config:
+    entity: andrei-jardan-technical-university-of-munich
+    project: genai-tetris
+    name: ${output_model_name}
+    id: ${subdir}
+    resume: allow
+    log_model: False
+
+wm:
+  history_size: 3
+  num_preds: 1
+  embed_dim: 192
+
+probe:
+  world_model_path: null
+  latent_source: encoder_cls
+  grid_width: 10
+  grid_height: 20
+  preview_images: 8

@@ -6,4 +6,4 @@ cd "$(dirname "$0")"
 
 # Use docker compose exec to run pylsp in the running container
 # The -T flag disables TTY allocation (required for LSP communication)
-docker compose exec -T app pylsp "$@"
+docker compose exec -T app-cpu pylsp "$@"
