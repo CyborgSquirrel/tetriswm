@@ -120,6 +120,12 @@ class DecoderModule(pl.LightningModule):
             preview_dir / f"epoch_{self.current_epoch + 1:04d}.png",
             nrow=n,
         )
+        if self.logger:
+            self.logger.log_image(
+                key="decoder/previews",
+                images=[imgs[i] for i in range(imgs.size(0))],
+                caption=["ground truth"] * n + ["reconstruction"] * n,
+            )
 
     def configure_optimizers(self):
         return torch.optim.AdamW(
