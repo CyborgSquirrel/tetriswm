@@ -21,7 +21,7 @@ def build_dataloaders(cfg):
 
     with open_dict(cfg):
         for col in cfg.data.dataset.keys_to_load:
-            if col.startswith("pixels"):
+            if col.startswith("pixels") or col == "tetris_grid_mask":
                 continue
             normalizer = get_column_normalizer(dataset, col, col)
             transforms.append(normalizer)
@@ -136,7 +136,7 @@ class ProbeModule(pl.LightningModule):
         captions_pred = [f"pred_{i}" for i in range(n)]
         self.logger.log_image(
             key="probe/masks",
-            images=[img.squeeze(0) for img in (*gt_imgs, *pred_imgs)],
+            images=[*gt_imgs, *pred_imgs],
             caption=captions_gt + captions_pred,
         )
 
