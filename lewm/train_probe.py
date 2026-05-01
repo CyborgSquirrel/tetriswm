@@ -185,7 +185,7 @@ def run(cfg):
         logger=logger,
         enable_checkpointing=True,
     )
-    trainer.fit(module, datamodule=data_module)
+    trainer.fit(module, datamodule=data_module, ckpt_path=cfg.get("resume_ckpt"))
 
 
 if __name__ == "__main__":
