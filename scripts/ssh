@@ -1,3 +1,5 @@
 #!/usr/bin/env bash
 
-sshpass -f ssh-pass.key ssh student@"$( cat ssh-addr.key )" "$@"
+source .env
+export SSHPASS="$SSH_PASS"
+sshpass -e ssh student@$SSH_ADDR "$@"

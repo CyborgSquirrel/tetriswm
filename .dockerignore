@@ -38,10 +38,6 @@ docker-compose*.yml
 .DS_Store
 Thumbs.db
 
-# Secrets
-*.key
-*.key.*
-
 # Docker X11 auth
 .Xauthority.docker
 
