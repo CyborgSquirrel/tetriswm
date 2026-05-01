@@ -46,7 +46,7 @@ wm:
 
 probe:
   world_model_path: null
-  latent_source: encoder_cls
+  latent_source: projected
   grid_width: 10
   grid_height: 20
   preview_images: 8
