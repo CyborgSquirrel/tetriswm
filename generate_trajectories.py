@@ -70,15 +70,13 @@ def main():
       # datasets, maybe do the same here.
 
       # NOTE: Action taken in the current step, leading to the next step.
-      if step_idx >= traj_len-1:
-        action = 0
-      else:
-        true_action = rng.choice(actions)
-        action = true_action + 1  # NOTE: Saving 0 as trajectory splitter
+      action_onehot = np.zeros(len(tetris.Action))
+      if step_idx < traj_len-1:
+        action = rng.choice(actions)
+        action_onehot[action-1] = 1
+        env.step(action)
 
-        env.step(true_action)
-
-      data["action"].append((float(action),))
+      data["action"].append(action_onehot)
 
       if env.state == tetris.GameState.OVER:
         break

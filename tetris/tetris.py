@@ -129,6 +129,7 @@ class MINOES:
 
 
 class Action(enum.IntEnum):
+    # NOTE: enum.auto() starts from 1
     NOTHING      = enum.auto()
     MOVE_LEFT    = enum.auto()
     MOVE_RIGHT   = enum.auto()
