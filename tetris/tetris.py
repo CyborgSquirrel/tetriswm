@@ -1,7 +1,18 @@
 import enum
+import stable_pretraining as spt
+from einops import rearrange
+import sys
+import torch
+from typing import Optional
 import numpy as np
 from tetris import layout
 from tetris import draw
+import lewm.jepa
+import lewm.module
+import lewm.utils
+# Checkpoints were saved when lewm submodules were importable as top-level; remap so pickle can find them.
+sys.modules.setdefault("jepa", lewm.jepa)
+sys.modules.setdefault("module", lewm.module)
 
 
 class MinoRotation(enum.IntEnum):
@@ -262,6 +273,74 @@ class Tetris:
             for x, y in self.current.coords:
                 if 0 <= x < self.width and 0 <= y < self.height:
                     grid[x,y] = COLOR_MINO
+        grid = draw.scale(grid, 10)
+
+        draw.blit(canvas, grid, self.lay_grid.x, self.lay_grid.y)
+
+        return canvas
+
+
+class WMTetris:
+    def __init__(
+        self,
+        world_model_path: str,
+        grid_probe_path: str,
+    ):
+        self.world_model = torch.load(world_model_path, weights_only=False, map_location="cpu").eval().requires_grad_(False)
+        self.grid_probe = torch.load(grid_probe_path, weights_only=False, map_location="cpu").eval().requires_grad_(False)
+
+        info = {}
+
+        t = Tetris()
+        pixels = torch.from_numpy(t.render())
+        pixels = rearrange(pixels, "w h c -> 1 1 c h w")
+        info["pixels"] = pixels
+
+        transforms = [lewm.utils.get_img_preprocessor(source='pixels', target='pixels', img_size=224)]
+        transform = spt.data.transforms.Compose(*transforms)
+        info = transform(info)
+
+        self.world_model.encode(info)
+        self.state_emb = info["emb"]
+        self._update_grid()
+
+        with layout.Frame(224, 224):
+            width, height = 10, 20
+            with layout.Center():
+                self.lay_grid = layout.Rect(width*10, height*10)
+
+    def _update_grid(self):
+        grid = self.grid_probe(self.state_emb)
+        grid = grid.sigmoid() > 0.5
+        grid = grid.numpy()
+        grid = rearrange(grid, "1 1 (w h) -> w h", w=10, h=20)
+        self.grid = grid
+
+    def encode_action(cls, action: Optional[Action]):
+        action_onehot = np.zeros(len(Action))
+        if action is not None:
+            action_onehot[action-1] = 1
+        return action_onehot
+
+    def step(self, action: Action):
+        action = self.encode_action(action)
+        action = rearrange(action, "c -> 1 1 c")
+        action = torch.from_numpy(action)
+        action = self.world_model.action_encoder(action)
+        self.state_emb = self.world_model.predict(self.state_emb, action)
+        self._update_grid()
+
+    def render(self):
+        COLOR_BG = (128, 128, 128)
+        COLOR_GRID_BG = (0, 0, 0)
+        COLOR_TILE = (180, 180, 180)
+        COLOR_MINO = (100, 200, 255)
+
+        canvas = np.zeros((224, 224, 3), dtype=np.uint8)
+        canvas[:,:] = COLOR_BG
+
+        grid = self.grid
+        grid = np.where(grid[..., None], COLOR_TILE, COLOR_GRID_BG).astype(np.uint8)
         grid = draw.scale(grid, 10)
 
         draw.blit(canvas, grid, self.lay_grid.x, self.lay_grid.y)

@@ -1,16 +1,13 @@
+from tetris.tetris import Action, GameState, Tetris, WMTetris
+import argparse
 import os
-os.environ.setdefault("SDL_VIDEODRIVER", "wayland")
 
 import numpy as np
 import pygame
 
-from tetris.tetris import Action, GameState, Tetris
+os.environ.setdefault("SDL_VIDEODRIVER", "wayland")
 
 SCALE = 4
-
-COLOR_EMPTY = (30,  30,  30)
-COLOR_TILE  = (180, 180, 180)
-COLOR_MINO  = (100, 200, 255)
 
 KEY_ACTION: dict[int, Action] = {
     pygame.K_LEFT:  Action.MOVE_LEFT,
@@ -22,28 +19,42 @@ KEY_ACTION: dict[int, Action] = {
 }
 
 
-# def render(tetris: Tetris) -> np.ndarray:
-#     grid = tetris.grid
-#     w,h = grid.shape
-#     img = np.where(grid[..., None], COLOR_TILE, COLOR_EMPTY).astype(np.uint8)
+def parse_args():
+    parser = argparse.ArgumentParser(description="Play Tetris")
+    subparsers = parser.add_subparsers(dest="mode", required=True)
 
-#     if tetris.current is not None:
-#         for x, y in tetris.current.coords:
-#             if 0 <= x < w and 0 <= y < h:
-#                 img[x,y] = COLOR_MINO
+    p = subparsers.add_parser("tetris", help="Play regular Tetris")
+    p.add_argument("--width",  type=int, default=10)
+    p.add_argument("--height", type=int, default=20)
 
-#     return img
+    p = subparsers.add_parser("wm", help="Play Tetris via World Model")
+    p.add_argument("--world-model", required=True, metavar="PATH", dest="world_model_path")
+    p.add_argument("--grid-probe",  required=True, metavar="PATH", dest="grid_probe_path")
+
+    return parser.parse_args()
+
+
+def make_game(args):
+    match args.mode:
+        case "tetris":
+            return Tetris(width=args.width, height=args.height)
+        case "wm":
+            return WMTetris(world_model_path=args.world_model_path, grid_probe_path=args.grid_probe_path)
+        case _:
+            raise ValueError(f"Unknown mode: {args.mode}")
 
 
 def main():
+    args = parse_args()
     pygame.init()
 
-    game = Tetris()
+    game = make_game(args)
+
     surf = pygame.display.set_mode((224*SCALE, 224*SCALE))
 
     pygame.display.set_caption("tetris")
 
-    while game.state == GameState.RUNNING:
+    while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return

@@ -18,6 +18,7 @@ ENV/
 *.pt
 *.h5
 *.pkl
+*.ckpt
 
 # OS
 .DS_Store
@@ -32,5 +33,6 @@ Thumbs.db
 
 /data
 /mounts
+/outputs
 
 .env

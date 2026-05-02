@@ -27,6 +27,7 @@ docker-compose*.yml
 *.pt
 *.h5
 *.pkl
+*.ckpt
 
 # IDE
 .vscode
@@ -43,3 +44,6 @@ Thumbs.db
 
 /data
 /mounts
+/outputs
+
+.env
