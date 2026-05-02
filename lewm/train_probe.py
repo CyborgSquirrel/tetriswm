@@ -190,6 +190,22 @@ class ProbeModule(pl.LightningModule):
         )
 
 
+def build_probe(latent_dim, out_dim, model_cfg):
+    kind = model_cfg.type
+    if kind == "linear":
+        return torch.nn.Linear(latent_dim, out_dim)
+    elif kind == "mlp":
+        hidden_dim = model_cfg.hidden_dim
+        num_layers = model_cfg.num_layers
+        layers = [torch.nn.Linear(latent_dim, hidden_dim), torch.nn.GELU()]
+        for _ in range(num_layers - 1):
+            layers += [torch.nn.Linear(hidden_dim, hidden_dim), torch.nn.GELU()]
+        layers.append(torch.nn.Linear(hidden_dim, out_dim))
+        return torch.nn.Sequential(*layers)
+    else:
+        raise ValueError(f"probe.model.type must be 'linear' or 'mlp', got '{kind}'")
+
+
 @hydra.main(version_base=None, config_path="./config/train", config_name="probe")
 def run(cfg):
     world_model = load_world_model(cfg.probe.world_model_path)
@@ -202,7 +218,7 @@ def run(cfg):
         else cfg.wm.embed_dim
     )
     grid_cells = cfg.probe.grid_width * cfg.probe.grid_height
-    probe = torch.nn.Linear(latent_dim, grid_cells)
+    probe = build_probe(latent_dim, grid_cells, cfg.probe.model)
 
     run_id = cfg.get("subdir") or ""
     run_dir = Path(swm.data.utils.get_cache_dir(), run_id)

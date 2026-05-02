@@ -53,3 +53,7 @@ probe:
   grid_height: 20
   preview_images: 8
   train_preview_interval: null
+  model:
+    type: linear  # 'linear' or 'mlp'
+    hidden_dim: 512
+    num_layers: 2
