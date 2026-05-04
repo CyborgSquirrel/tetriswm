@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source .env
+source x.env
 
 [ "$WANDB_KEY" ] || {
   echo "Missing wandb key, can't login"
