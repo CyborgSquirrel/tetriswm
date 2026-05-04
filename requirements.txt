@@ -4,18 +4,11 @@ pandas
 matplotlib
 scipy
 
-# Tetris environment
-# tetris-gymnasium
-# NOTE: Using a fork with some fixes
-# git+https://github.com/CyborgSquirrel/Tetris-Gymnasium@fixes
-
 # Deep learning
 torch
 torchvision
 
 # LeWM architecture
-# timm       # ViT-Tiny encoder
-# einops     # tensor reshaping
 stable-baselines3>=2.0
 stable-worldmodel[train,env]
 
@@ -24,10 +17,14 @@ tqdm
 jupyter
 ipython
 
-# Formats
-h5py # HDF5
+# HDF5
+h5py
+hdf5plugin  # compression filters
 
 # LSP server for editor integration
 python-lsp-server[all]
 
 pygame-ce
+
+# grpcio-tools 1.30.0 fails to build on Python 3.12 (missing pkg_resources build dep)
+grpcio-tools>=1.62.0

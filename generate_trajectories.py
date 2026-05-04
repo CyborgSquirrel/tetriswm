@@ -7,6 +7,7 @@ import os
 import numpy as np
 from tetris import tetris
 import h5py
+from tqdm import tqdm
 
 def parse_args():
   p = argparse.ArgumentParser()
@@ -24,25 +25,23 @@ def main():
   traj_num = args.traj_num
   traj_len = args.traj_len
 
-  data = {
-    key: []
-    for key in [
-      "pixels",
-      "tetris_grid_mask",
-      "tetris_mino_mask",
-      "action",
-      "ep_len",
-      "ep_idx",
-      "ep_offset",
-    ]
-  }
+  keys = {}
+  keys["pixels"] = { "image": True }
+  keys["tetris_grid_mask"] = { "image": True }
+  keys["tetris_mino_mask"] = { "image": True }
+  keys["action"] = {}
+  keys["ep_len"] = {}
+  keys["ep_idx"] = {}
+  keys["ep_offset"] = {}
+
+  data = { key: [] for key in keys.keys() }
 
   actions = np.array(tetris.Action)
 
   ep_idx_it = 0
   ep_offset_it = 0
 
-  for traj_idx in range(traj_num):
+  for traj_idx in tqdm(range(traj_num)):
     env = tetris.Tetris()
 
     ep_idx = ep_idx_it
@@ -94,7 +93,15 @@ def main():
   # Write to HDF5 file
   with h5py.File(out_path, "w") as f:
     for key, value in data.items():
-      f.create_dataset(key, data=value, compression="gzip", compression_opts=4)
+      key_spec = keys[key]
+
+      dataset_args = {}
+
+      if key_spec.get("image", False):
+        dataset_args["chunks"] = (1,) + value.shape[1:]
+        dataset_args["compression"] = "gzip"
+
+      f.create_dataset(key, data=value, **dataset_args)
 
 if __name__ == "__main__":
   main()

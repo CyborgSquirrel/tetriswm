@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-ls /app
-/app/scripts/wandb_login
+/app/scripts/wandb_login || true
+
+[ -d "/mounts/venv" ] && {
+  rm -rf /mounts/venv/*
+  cp -r /home/user/venv/* /mounts/venv
+}
 
 exec "$@"

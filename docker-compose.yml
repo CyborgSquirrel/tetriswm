@@ -20,6 +20,7 @@ services:
       - ./.Xauthority.docker:/home/user/.Xauthority:ro
 
       - ./mounts/.stable_worldmodel:/home/user/.stable_worldmodel:rw
+      - ./.venv:/mounts/venv:rw
     environment:
       # Wayland environment
       - WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}

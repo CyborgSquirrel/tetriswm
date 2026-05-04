@@ -38,7 +38,8 @@ RUN userdel -r ubuntu 2>/dev/null || true
 # Create user matching host group and user
 RUN \
        groupadd -f -g "$XGID" user \
-    && useradd -m -u "$XUID" -g "$XGID" -s /bin/bash user
+    && useradd -m -u "$XUID" -g "$XGID" -s /bin/bash user \
+    && chown user:user /app
 
 USER $XUID:$XGID
 ENV HOME="/home/user"
@@ -59,12 +60,13 @@ ENV PATH="/home/user/venv/bin:$PATH"
 
 # Copy requirements first for better caching
 COPY --chown=$XUID:$XGID requirements.txt .
-RUN --mount=type=cache,uid=$XUID,gid=$XGID,dst=/home/user/.cache/uv \
-       uv pip install -r requirements.txt \
-       # NOTE: outdated `datasets` gets installed for some reason, so forcefully
-       # upgrading it
-    && uv pip install --upgrade datasets \
-    && :
+RUN --mount=type=cache,uid=$XUID,gid=$XGID,dst=/home/user/.cache/uv <<EOF
+uv pip compile requirements.txt -o requirements.lock
+uv pip sync requirements.lock
+# NOTE: outdated `datasets` gets installed for some reason, so forcefully
+# upgrading it
+uv pip install --upgrade datasets
+EOF
 
 # Copy the rest of the application
 COPY --chown=$XUID:$XGID . .
