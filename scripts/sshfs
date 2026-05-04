@@ -2,7 +2,7 @@
 
 mount_path="/home/$USER/cluster"
 
-source .env
+source x.env
 
 mkdir -p "$mount_path"
 sshfs -o password_stdin "student@$SSH_ADDR:/home/student" "$mount_path" <<< "$SSH_PASS"
