@@ -137,14 +137,8 @@ def main(cfg: DictConfig):
         pixels = env.render()
         data["pixels"].append(rearrange(pixels, "w h c -> h w c"))
 
-        tetris_grid_mask = (env.grid.copy() != 0)
-        tetris_mino_mask = np.zeros_like(tetris_grid_mask)
-        if env.current is not None:
-          for x,y in env.current.coords:
-            tetris_mino_mask[x,y] = 1
-        tetris_grid_mask = tetris_grid_mask | tetris_mino_mask
-        data["tetris_grid_mask"].append(tetris_grid_mask.astype(np.uint8))
-        data["tetris_mino_mask"].append(tetris_mino_mask.astype(np.uint8))
+        data["tetris_grid_mask"].append((env.grid != 0).astype(np.uint8))
+        data["tetris_mino_mask"].append(env.mino_mask.astype(np.uint8))
 
         # TODO: Le-WM actions seem to range between [-1;1] in the training
         # datasets, maybe do the same here.

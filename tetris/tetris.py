@@ -257,11 +257,14 @@ class GtDynamics:
 
     def _update_parent(self):
         grid = self.grid.copy()
+        mino_mask = np.full((self.tetris.width, self.tetris.height), False)
         if self.current is not None:
             for x, y in self.current.coords:
                 if 0 <= x < self.tetris.width and 0 <= y < self.tetris.height:
                     grid[x, y] = self.tetris.tile_set.obj_to_oid[self.current.tile]
+                    mino_mask[x, y] = True
         self.tetris.grid = grid
+        self.tetris.mino_mask = mino_mask
 
     def _spawn_mino(self):
         # Spawn mino if missing
@@ -322,7 +325,7 @@ class GtDynamics:
                 self.current = mino1
 
         # Apply gravity
-        mino = self.current.copy().translate((0,1))
+        mino = self.current.copy().translate((0, 1))
         if not (mino.intersect_grid(self.grid) & MinoIntersection.COLLISION):
             self.current = mino
         else:
