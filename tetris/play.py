@@ -1,23 +1,23 @@
-from tetris.tetris import Action, GameState, Tetris, WMTetris
+from tetris.tetris import Action, GameState, Tetris, WmDynamics
 import argparse
 import os
 
 import numpy as np
 import pygame
 from omegaconf import OmegaConf
-from hydra.utils import instantiate
 
 os.environ.setdefault("SDL_VIDEODRIVER", "wayland")
 
 SCALE = 4
 
 KEY_ACTION: dict[int, Action] = {
-    pygame.K_LEFT:  Action.MOVE_LEFT,
-    pygame.K_RIGHT: Action.MOVE_RIGHT,
-    pygame.K_DOWN:  Action.MOVE_DOWN,
-    pygame.K_SPACE: Action.HARD_DROP,
-    pygame.K_z:     Action.ROTATE_LEFT,
-    pygame.K_x:     Action.ROTATE_RIGHT,
+    pygame.K_LEFT:   Action.MOVE_LEFT,
+    pygame.K_RIGHT:  Action.MOVE_RIGHT,
+    pygame.K_DOWN:   Action.MOVE_DOWN,
+    pygame.K_SPACE:  Action.HARD_DROP,
+    pygame.K_z:      Action.ROTATE_LEFT,
+    pygame.K_x:      Action.ROTATE_RIGHT,
+    pygame.K_RETURN: Action.NOTHING,
 }
 
 
@@ -31,6 +31,7 @@ def parse_args():
     p = subparsers.add_parser("wm", help="Play Tetris via World Model")
     p.add_argument("--world-model", required=True, metavar="PATH", dest="world_model_path")
     p.add_argument("--grid-probe",  required=True, metavar="PATH", dest="grid_probe_path")
+    p.add_argument("--config", required=True, metavar="PATH", help="Path to a dataset Hydra config (e.g. config/tetris/overfit.yaml)")
 
     return parser.parse_args()
 
@@ -39,13 +40,19 @@ def make_game(args):
     match args.mode:
         case "tetris":
             if args.config is not None:
-                cfg = OmegaConf.load(args.config).tetris
-                mino_generator = instantiate(cfg.mino_generator, rng=np.random.default_rng())
-                return Tetris(width=cfg.width, height=cfg.height, mino_generator=mino_generator)
+                return Tetris.from_config(OmegaConf.load(args.config).tetris)
             else:
                 return Tetris()
         case "wm":
-            return WMTetris(world_model_path=args.world_model_path, grid_probe_path=args.grid_probe_path)
+            cfg = OmegaConf.load(args.config).tetris
+            initial_tetris = Tetris.from_config(cfg)
+            tetris_kwargs = dict(width=cfg.width, height=cfg.height)
+            dynamics = WmDynamics(
+                world_model_path=args.world_model_path,
+                grid_probe_path=args.grid_probe_path,
+                tetris=initial_tetris,
+            )
+            return Tetris(dynamics=dynamics, **tetris_kwargs)
         case _:
             raise ValueError(f"Unknown mode: {args.mode}")
 

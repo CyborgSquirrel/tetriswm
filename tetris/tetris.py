@@ -7,6 +7,7 @@ import sys
 import torch
 from typing import Optional
 import numpy as np
+from hydra.utils import instantiate
 from tetris import layout
 from tetris import draw
 import lewm.jepa
@@ -223,44 +224,50 @@ class BagGenerator:
         return self.bag.pop()
 
 
-class Tetris:
+class GtDynamics:
     def __init__(
         self,
         *,
-        width: int = 10,
-        height: int = 20,
         mino_generator = None,
         rng = None,
     ):
         rng = rng or np.random.default_rng()
 
-        self.width = width
-        self.height = height
         self.current: Mino | None = None
         self.state = GameState.RUNNING
         self.cleared_rows = 0
-
-        self.tile_set = TILE_SET
-        self.tile_color_lut = np.array([ tile.color for tile in TILE_SET.oid_to_obj ])
 
         self.mino_generator = (
             mino_generator
             or BagGenerator([mino.value for mino in Minoes], rng=np.random.default_rng(rng_derive_seed(rng)))
         )
 
-        self.grid = np.full((width,height), self.tile_set.obj_to_oid[TILE_EMPTY], dtype=np.uint8)
+    def _init(self, tetris):
+        self.tetris = tetris
+
+        self.grid = np.full(
+            (tetris.width, tetris.height),
+            self.tetris.tile_set.obj_to_oid[TILE_EMPTY],
+            dtype=np.uint8,
+        )
 
         self._spawn_mino()
 
-        with layout.Frame(224, 224):
-            with layout.Center():
-                self.lay_grid = layout.Rect(width*10, height*10)
+        self._update_parent()
+
+    def _update_parent(self):
+        grid = self.grid.copy()
+        if self.current is not None:
+            for x, y in self.current.coords:
+                if 0 <= x < self.tetris.width and 0 <= y < self.tetris.height:
+                    grid[x, y] = self.tetris.tile_set.obj_to_oid[self.current.tile]
+        self.tetris.grid = grid
 
     def _spawn_mino(self):
         # Spawn mino if missing
         if self.current is None:
             mino = self.mino_generator.generate()
-            mino = mino.center(self.width)
+            mino = mino.center(self.tetris.width)
             self.current = mino
 
     def _rotate_mino(self, rotation: MinoRotation):
@@ -276,13 +283,13 @@ class Tetris:
                 yield abs_dx * -1
 
         for dx in dx_gen_fn():
-            new_mino = rotated_mino.copy().translate((dx,0))
+            new_mino = rotated_mino.copy().translate((dx, 0))
             if new_mino.intersect_grid(self.grid) & MinoIntersection.COLLISION:
                 continue
             self.current = new_mino
             return
 
-    def step(self, action: Action):
+    def _step(self, action: Action):
         if self.state == GameState.OVER:
             return
 
@@ -296,12 +303,12 @@ class Tetris:
                 self._rotate_mino(MinoRotation.RIGHT)
             case Action.MOVE_LEFT:
                 mino = self.current.copy()
-                mino = mino.translate((-1,0))
+                mino = mino.translate((-1, 0))
                 if not (mino.intersect_grid(self.grid) & MinoIntersection.COLLISION):
                     self.current = mino
             case Action.MOVE_RIGHT:
                 mino = self.current.copy()
-                mino = mino.translate((1,0))
+                mino = mino.translate((1, 0))
                 if not (mino.intersect_grid(self.grid) & MinoIntersection.COLLISION):
                     self.current = mino
             case Action.MOVE_DOWN:
@@ -309,7 +316,7 @@ class Tetris:
             case Action.HARD_DROP:
                 mino0 = self.current.copy()
                 while True:
-                    mino0, mino1 = mino0.translate((0,1)), mino0
+                    mino0, mino1 = mino0.translate((0, 1)), mino0
                     if mino0.intersect_grid(self.grid) & MinoIntersection.COLLISION:
                         break
                 self.current = mino1
@@ -326,11 +333,11 @@ class Tetris:
             # Place mino in grid
             self.current, mino = None, self.current
             for x,y in mino.coords:
-                self.grid[x,y] = self.tile_set.obj_to_oid[mino.tile]
+                self.grid[x,y] = self.tetris.tile_set.obj_to_oid[mino.tile]
 
         # Clear rows
         dy = 0
-        for y in range(self.height-1, 0, -1):
+        for y in range(self.tetris.height-1, 0, -1):
             empty_tiles_num = np.sum(self.grid[:,y] == 0)
             if empty_tiles_num == 0:
                 self.cleared_rows += 1
@@ -343,38 +350,25 @@ class Tetris:
 
         self._spawn_mino()
 
-    def render(self):
-        COLOR_BG = (128, 128, 128)
-
-        canvas = np.zeros((224, 224, 3), dtype=np.uint8)
-        canvas[:,:] = COLOR_BG
-
-        grid = self.grid.copy()
-        if self.current is not None:
-            for x, y in self.current.coords:
-                if 0 <= x < self.width and 0 <= y < self.height:
-                    grid[x,y] = self.tile_set.obj_to_oid[self.current.tile]
-        grid = self.tile_color_lut[grid]
-        grid = draw.scale(grid, 10)
-
-        draw.blit(canvas, grid, self.lay_grid.x, self.lay_grid.y)
-
-        return canvas
+    def step(self, action: Action):
+        self._step(action)
+        self._update_parent()
 
 
-class WMTetris:
+class WmDynamics:
     def __init__(
         self,
+        *,
         world_model_path: str,
         grid_probe_path: str,
+        tetris: 'Tetris',
     ):
         self.world_model = torch.load(world_model_path, weights_only=False, map_location="cpu").eval().requires_grad_(False)
         self.grid_probe = torch.load(grid_probe_path, weights_only=False, map_location="cpu").eval().requires_grad_(False)
 
         info = {}
 
-        t = Tetris()
-        pixels = torch.from_numpy(t.render())
+        pixels = torch.from_numpy(tetris.render())
         pixels = rearrange(pixels, "w h c -> 1 1 c h w")
         info["pixels"] = pixels
 
@@ -384,19 +378,18 @@ class WMTetris:
 
         self.world_model.encode(info)
         self.state_emb = info["emb"]
-        self._update_grid()
 
-        with layout.Frame(224, 224):
-            width, height = 10, 20
-            with layout.Center():
-                self.lay_grid = layout.Rect(width*10, height*10)
+    def _init(self, tetris):
+        self.tetris = tetris
+        self._update_parent()
 
-    def _update_grid(self):
+    def _update_parent(self):
         grid = self.grid_probe(self.state_emb)
         grid = grid.sigmoid() > 0.5
         grid = grid.numpy()
-        grid = rearrange(grid, "1 1 (w h) -> w h", w=10, h=20)
-        self.grid = grid
+        grid = rearrange(grid, "1 1 (w h) -> w h", w=self.tetris.width, h=self.tetris.height)
+        grid = grid.astype(np.uint8)
+        self.tetris.grid = grid
 
     def encode_action(cls, action: Optional[Action]):
         action_onehot = np.zeros(len(Action))
@@ -410,19 +403,46 @@ class WMTetris:
         action = torch.from_numpy(action)
         action = self.world_model.action_encoder(action)
         self.state_emb = self.world_model.predict(self.state_emb, action)
-        self._update_grid()
+        self._update_parent()
+
+
+class Tetris:
+    def __init__(
+        self,
+        *,
+        width: int = 10,
+        height: int = 20,
+        dynamics = None,
+    ):
+        self.width = width
+        self.height = height
+
+        self.tile_set = TILE_SET
+        self.tile_color_lut = np.array([ tile.color for tile in TILE_SET.oid_to_obj ])
+
+        self.dynamics = dynamics or GtDynamics()
+        self.dynamics._init(self)
+
+        with layout.Frame(224, 224):
+            with layout.Center():
+                self.lay_grid = layout.Rect(width*10, height*10)
+
+    @classmethod
+    def from_config(cls, cfg, *, rng=None):
+        mino_generator = instantiate(cfg.mino_generator, rng=rng or np.random.default_rng())
+        dynamics = GtDynamics(mino_generator=mino_generator)
+        return cls(width=cfg.width, height=cfg.height, dynamics=dynamics)
+
+    def step(self, action: Action):
+        self.dynamics.step(action)
 
     def render(self):
         COLOR_BG = (128, 128, 128)
-        COLOR_GRID_BG = (0, 0, 0)
-        COLOR_TILE = (180, 180, 180)
-        COLOR_MINO = (100, 200, 255)
 
         canvas = np.zeros((224, 224, 3), dtype=np.uint8)
         canvas[:,:] = COLOR_BG
 
-        grid = self.grid
-        grid = np.where(grid[..., None], COLOR_TILE, COLOR_GRID_BG).astype(np.uint8)
+        grid = self.tile_color_lut[self.grid]
         grid = draw.scale(grid, 10)
 
         draw.blit(canvas, grid, self.lay_grid.x, self.lay_grid.y)

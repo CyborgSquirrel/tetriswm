@@ -8,7 +8,6 @@ from tetris import tetris
 import h5py
 from tqdm import tqdm
 import hydra
-from hydra.utils import instantiate
 from omegaconf import DictConfig
 
 log = logging.getLogger(__name__)
@@ -121,14 +120,9 @@ def main(cfg: DictConfig):
     ep_offset_it = 0
 
     for traj_idx in tqdm(range(cfg.traj_num)):
-      mino_generator = instantiate(
-        cfg.tetris.mino_generator,
+      env = tetris.Tetris.from_config(
+        cfg.tetris,
         rng=np.random.default_rng(tetris.rng_derive_seed(rng)),
-      )
-      env = tetris.Tetris(
-        width=cfg.tetris.width,
-        height=cfg.tetris.height,
-        mino_generator=mino_generator,
       )
 
       ep_idx = ep_idx_it
@@ -164,7 +158,7 @@ def main(cfg: DictConfig):
 
         data["action"].append(action_onehot)
 
-        if env.state == tetris.GameState.OVER:
+        if env.dynamics.state == tetris.GameState.OVER:
           break
       ep_len = ep_offset_it - ep_offset
 
