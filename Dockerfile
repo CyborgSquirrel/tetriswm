@@ -1,4 +1,8 @@
+# syntax=docker/dockerfile:1.4
+
 FROM nvidia/cuda:13.1.1-cudnn-runtime-ubuntu24.04
+
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
 ARG XUID
 ARG XGID
