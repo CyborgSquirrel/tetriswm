@@ -64,6 +64,8 @@ ENV UV_PYTHON_CACHE_DIR=/home/user/.cache/uv
 RUN uv venv /home/user/venv
 
 # Activate venv by modifying PATH
+ENV UV_PROJECT_ENVIRONMENT=/home/user/venv
+ENV VIRTUAL_ENV=/home/user/venv
 ENV PATH="/home/user/venv/bin:$PATH"
 
 # Copy requirements first for better caching
