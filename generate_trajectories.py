@@ -1,30 +1,18 @@
-import argparse
 import logging
 import contextlib as ctl
 from einops import rearrange
-import itertools as itt
-import os.path
 import os
 
 import numpy as np
 from tetris import tetris
 import h5py
 from tqdm import tqdm
+import hydra
+from hydra.utils import instantiate
+from omegaconf import DictConfig
 
 log = logging.getLogger(__name__)
 
-
-class SetAddAction(argparse.Action):
-  def __call__(self, parser, namespace, values, option_string=None):
-    current = getattr(namespace, self.dest)
-    current.add(values)
-    setattr(namespace, self.dest, current)
-
-class SetRemoveAction(argparse.Action):
-  def __call__(self, parser, namespace, values, option_string=None):
-    current = getattr(namespace, self.dest)
-    current.discard(values)
-    setattr(namespace, self.dest, current)
 
 class LazyDataset:
   def __init__(self, f, name, *, dataset_kwargs=None, init_hook=None):
@@ -88,34 +76,15 @@ class LazyDataset:
     self.dataset[self.idx] = item
     self.idx += 1
 
-def parse_args():
-  p = argparse.ArgumentParser()
-  p.add_argument("out")
-  p.add_argument("--traj-num", type=int, default=1)
-  p.add_argument("--traj-len", type=int, default=50)
-  p.add_argument("--seed", type=int, default=42)
 
-  p.set_defaults(actions=set(tetris.Action))
-  p.add_argument(
-    "--remove-action",
-    metavar="ACTION",
-    action=SetRemoveAction,
-    dest="actions",
-    type=tetris.Action.__getitem__,
-    help="Action names to remove from the action space (e.g. NOTHING HARD_DROP)",
-  )
+@hydra.main(config_path="config/tetris/", config_name="overfit", version_base=None)
+def main(cfg: DictConfig):
+  rng: np.random.Generator = np.random.default_rng(seed=cfg.seed)
 
-  return p.parse_args()
-
-def main():
-  args = parse_args()
-  rng: np.random.Generator = np.random.default_rng(seed=args.seed)
-
-  out_path = args.out
-  traj_num = args.traj_num
-  traj_len = args.traj_len
-
-  actions = np.array(list(args.actions))
+  actions = set(tetris.Action)
+  for name in cfg.remove_actions:
+    actions.discard(tetris.Action[name])
+  actions = np.array(list(actions))
 
   keys = {}
   keys["pixels"] = { "image": True }
@@ -128,13 +97,11 @@ def main():
 
   # Write to HDF5 file
   with ctl.ExitStack() as stack:
-    f = stack.enter_context(h5py.File(out_path, "w"))
+    f = stack.enter_context(h5py.File(cfg.out, "w"))
 
     # Create (lazy) datasets
     data = {}
     for key, key_spec in keys.items():
-      dataset_args = {}
-
       def init_hook(
         ds,
         *,
@@ -153,14 +120,22 @@ def main():
     ep_idx_it = 0
     ep_offset_it = 0
 
-    for traj_idx in tqdm(range(traj_num)):
-      env = tetris.Tetris()
+    for traj_idx in tqdm(range(cfg.traj_num)):
+      mino_generator = instantiate(
+        cfg.tetris.mino_generator,
+        rng=np.random.default_rng(tetris.rng_derive_seed(rng)),
+      )
+      env = tetris.Tetris(
+        width=cfg.tetris.width,
+        height=cfg.tetris.height,
+        mino_generator=mino_generator,
+      )
 
       ep_idx = ep_idx_it
       ep_idx_it += 1
 
       ep_offset = ep_offset_it
-      for step_idx in range(traj_len):
+      for step_idx in range(cfg.traj_len):
         data["ep_idx"].append(ep_idx)
 
         ep_offset_it += 1
@@ -182,7 +157,7 @@ def main():
 
         # NOTE: Action taken in the current step, leading to the next step.
         action_onehot = np.zeros(len(tetris.Action))
-        if step_idx < traj_len-1:
+        if step_idx < cfg.traj_len-1:
           action = rng.choice(actions)
           action_onehot[action-1] = 1
           env.step(action)
@@ -195,6 +170,7 @@ def main():
 
       data["ep_len"].append(ep_len)
       data["ep_offset"].append(ep_offset)
+
 
 if __name__ == "__main__":
   main()

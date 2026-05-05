@@ -23,6 +23,7 @@ hdf5plugin  # compression filters
 
 # LSP server for editor integration
 python-lsp-server[all]
+pylsp-isort
 
 pygame-ce
 

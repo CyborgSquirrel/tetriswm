@@ -14,6 +14,7 @@ encoder_scale: tiny
 dump_object: True
 
 trainer:
+  default_root_dir: outputs
   max_epochs: 100
   devices: auto
   accelerator: gpu

@@ -1,4 +1,6 @@
 import enum
+import random
+import dataclasses as dc
 import stable_pretraining as spt
 from einops import rearrange
 import sys
@@ -39,19 +41,26 @@ class MinoIntersection(enum.Flag):
     )
 
 
+@dc.dataclass(eq=False)
+class TileDef:
+    color: tuple[int, int, int]
+
+
 class Mino:
     """Tetromino"""
 
     def __init__(
         self,
+        *,
         coords: np.ndarray | list[tuple[int, int]],
         half: tuple[bool, bool],
-        rotations: int = 0,
+        tile: TileDef,
     ):
         self.coords    = np.array(coords, dtype=np.int32)
         self.half      = np.array(half, dtype=np.int32)
         self.origin    = np.zeros(2, dtype=np.int32)
-        self.rotations = rotations
+        self.rotations = 0
+        self.tile      = tile
 
     def copy(self) -> 'Mino':
         new = object.__new__(Mino)
@@ -59,6 +68,7 @@ class Mino:
         new.half      = self.half.copy()
         new.origin    = self.origin.copy()
         new.rotations = self.rotations
+        new.tile      = self.tile
         return new
 
     def bounding_rect(self) -> tuple[int, int, int, int]:
@@ -90,7 +100,7 @@ class Mino:
                 ret |= MinoIntersection.GRID_TILE
         return ret
 
-    def spawn(self, grid_w: int) -> 'Mino':
+    def center(self, grid_w: int) -> 'Mino':
         bx, by, bw, bh = self.bounding_rect()
         dx = (grid_w - bw) // 2 - bx
         dy = -by
@@ -129,14 +139,44 @@ class Mino:
         return new
 
 
-class MINOES:
-    I = Mino([(-1, 0), ( 0, 0), ( 1, 0), ( 2, 0)], half=(1, 1))
-    L = Mino([(-1, 0), ( 0, 0), ( 1, 0), ( 1,-1)], half=(0, 0))
-    J = Mino([(-1,-1), (-1, 0), ( 0, 0), ( 1, 0)], half=(0, 0))
-    O = Mino([( 0, 0), ( 1, 0), ( 0, 1), ( 1, 1)], half=(1, 1))
-    Z = Mino([(-1,-1), ( 0,-1), ( 0, 0), ( 1, 0)], half=(0, 0))
-    S = Mino([( 1,-1), ( 0,-1), ( 0, 0), (-1, 0)], half=(0, 0))
-    T = Mino([(-1, 0), ( 0, 0), ( 1, 0), ( 0,-1)], half=(0, 0))
+class ObjectSet:
+    def __init__(self, objs=None):
+        if objs is None:
+            objs = []
+
+        self.oid_to_obj = []
+        self.obj_to_oid = {}
+
+        for obj in objs:
+            self.add(obj)
+
+    def add(self, obj):
+        oid = len(self.oid_to_obj)
+        self.oid_to_obj.append(obj)
+        self.obj_to_oid[obj] = oid
+        return obj
+
+
+TILE_SET = ObjectSet()
+
+TILE_EMPTY = TILE_SET.add(TileDef( color=(0  , 0  , 0  ) ))
+TILE_I     = TILE_SET.add(TileDef( color=(0  , 240, 240) ))
+# TILE_I     = TILE_SET.add(TileDef( color=(100, 200, 255) ))
+TILE_L     = TILE_SET.add(TileDef( color=(240, 160, 0  ) ))
+TILE_J     = TILE_SET.add(TileDef( color=(0  , 0  , 240) ))
+TILE_O     = TILE_SET.add(TileDef( color=(240, 240, 0  ) ))
+TILE_Z     = TILE_SET.add(TileDef( color=(240, 0  , 0  ) ))
+TILE_S     = TILE_SET.add(TileDef( color=(0  , 240, 0  ) ))
+TILE_T     = TILE_SET.add(TileDef( color=(160, 0  , 240) ))
+
+class Minoes(enum.Enum):
+    I = Mino(coords=[(-1, 0), ( 0, 0), ( 1, 0), ( 2, 0)], half=(1, 1), tile=TILE_I)
+    L = Mino(coords=[(-1, 0), ( 0, 0), ( 1, 0), ( 1,-1)], half=(0, 0), tile=TILE_L)
+    J = Mino(coords=[(-1,-1), (-1, 0), ( 0, 0), ( 1, 0)], half=(0, 0), tile=TILE_J)
+    O = Mino(coords=[( 0, 0), ( 1, 0), ( 0, 1), ( 1, 1)], half=(1, 1), tile=TILE_O)
+    Z = Mino(coords=[(-1,-1), ( 0,-1), ( 0, 0), ( 1, 0)], half=(0, 0), tile=TILE_Z)
+    S = Mino(coords=[( 1,-1), ( 0,-1), ( 0, 0), (-1, 0)], half=(0, 0), tile=TILE_S)
+    T = Mino(coords=[(-1, 0), ( 0, 0), ( 1, 0), ( 0,-1)], half=(0, 0), tile=TILE_T)
 
 
 class Action(enum.IntEnum):
@@ -155,18 +195,61 @@ class GameState(enum.IntEnum):
     OVER = enum.auto()
 
 
+def rng_derive_seed(rng: np.random.Generator | random.Random):
+    if isinstance(rng, np.random.Generator):
+        b = rng.bytes(4)
+    elif isinstance(rng, random.Random):
+        b = rng.randbytes(4)
+    else:
+        raise TypeError()
+    seed = int.from_bytes(b)
+    return seed
+
+
+class BagGenerator:
+    def __init__(self, minoes, *, rng: np.random.Generator):
+        self.minoes = [Minoes[m].value if isinstance(m, str) else m for m in minoes]
+        if len(self.minoes) <= 0:
+            raise ValueError()
+
+        self.bag = []
+        self.rng = rng
+
+    def generate(self):
+        if len(self.bag) <= 0:
+            for mino in self.minoes:
+                self.bag.append(mino)
+            self.rng.shuffle(self.bag)
+        return self.bag.pop()
+
+
 class Tetris:
     def __init__(
         self,
+        *,
         width: int = 10,
         height: int = 20,
+        mino_generator = None,
+        rng = None,
     ):
-        self.width   = width
-        self.height  = height
-        self.grid    = np.zeros((width,height), dtype=np.uint8)
+        rng = rng or np.random.default_rng()
+
+        self.width = width
+        self.height = height
         self.current: Mino | None = None
         self.state = GameState.RUNNING
         self.cleared_rows = 0
+
+        self.tile_set = TILE_SET
+        self.tile_color_lut = np.array([ tile.color for tile in TILE_SET.oid_to_obj ])
+
+        self.mino_generator = (
+            mino_generator
+            or BagGenerator([mino.value for mino in Minoes], rng=np.random.default_rng(rng_derive_seed(rng)))
+        )
+
+        self.grid = np.full((width,height), self.tile_set.obj_to_oid[TILE_EMPTY], dtype=np.uint8)
+
         self._spawn_mino()
 
         with layout.Frame(224, 224):
@@ -176,8 +259,9 @@ class Tetris:
     def _spawn_mino(self):
         # Spawn mino if missing
         if self.current is None:
-            # TODO: pick from many minoes
-            self.current = MINOES.I.spawn(self.width)
+            mino = self.mino_generator.generate()
+            mino = mino.center(self.width)
+            self.current = mino
 
     def _rotate_mino(self, rotation: MinoRotation):
         mino = self.current.copy()
@@ -240,9 +324,9 @@ class Tetris:
                 return
 
             # Place mino in grid
-            for x,y in self.current.coords:
-                self.grid[x,y] = 1
-            self.current = None
+            self.current, mino = None, self.current
+            for x,y in mino.coords:
+                self.grid[x,y] = self.tile_set.obj_to_oid[mino.tile]
 
         # Clear rows
         dy = 0
@@ -261,18 +345,16 @@ class Tetris:
 
     def render(self):
         COLOR_BG = (128, 128, 128)
-        COLOR_GRID_BG = (0, 0, 0)
-        COLOR_TILE = (180, 180, 180)
-        COLOR_MINO = (100, 200, 255)
 
         canvas = np.zeros((224, 224, 3), dtype=np.uint8)
         canvas[:,:] = COLOR_BG
 
-        grid = np.where(self.grid[..., None], COLOR_TILE, COLOR_GRID_BG).astype(np.uint8)
+        grid = self.grid.copy()
         if self.current is not None:
             for x, y in self.current.coords:
                 if 0 <= x < self.width and 0 <= y < self.height:
-                    grid[x,y] = COLOR_MINO
+                    grid[x,y] = self.tile_set.obj_to_oid[self.current.tile]
+        grid = self.tile_color_lut[grid]
         grid = draw.scale(grid, 10)
 
         draw.blit(canvas, grid, self.lay_grid.x, self.lay_grid.y)

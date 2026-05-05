@@ -4,6 +4,8 @@ import os
 
 import numpy as np
 import pygame
+from omegaconf import OmegaConf
+from hydra.utils import instantiate
 
 os.environ.setdefault("SDL_VIDEODRIVER", "wayland")
 
@@ -24,8 +26,7 @@ def parse_args():
     subparsers = parser.add_subparsers(dest="mode", required=True)
 
     p = subparsers.add_parser("tetris", help="Play regular Tetris")
-    p.add_argument("--width",  type=int, default=10)
-    p.add_argument("--height", type=int, default=20)
+    p.add_argument("--config", metavar="PATH", help="Path to a dataset Hydra config (e.g. config/tetris/overfit.yaml)")
 
     p = subparsers.add_parser("wm", help="Play Tetris via World Model")
     p.add_argument("--world-model", required=True, metavar="PATH", dest="world_model_path")
@@ -37,7 +38,12 @@ def parse_args():
 def make_game(args):
     match args.mode:
         case "tetris":
-            return Tetris(width=args.width, height=args.height)
+            if args.config is not None:
+                cfg = OmegaConf.load(args.config).tetris
+                mino_generator = instantiate(cfg.mino_generator, rng=np.random.default_rng())
+                return Tetris(width=cfg.width, height=cfg.height, mino_generator=mino_generator)
+            else:
+                return Tetris()
         case "wm":
             return WMTetris(world_model_path=args.world_model_path, grid_probe_path=args.grid_probe_path)
         case _:

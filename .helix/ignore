@@ -1,1 +1,4 @@
 !x.env
+!.venv/
+!*.ign
+!*.ign.*

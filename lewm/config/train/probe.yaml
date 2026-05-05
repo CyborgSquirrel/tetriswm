@@ -13,6 +13,7 @@ seed: 3072
 img_size: 224
 
 trainer:
+  default_root_dir: outputs
   max_epochs: 50
   devices: auto
   accelerator: gpu
