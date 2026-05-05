@@ -8,8 +8,6 @@ from omegaconf import OmegaConf
 
 os.environ.setdefault("SDL_VIDEODRIVER", "wayland")
 
-SCALE = 4
-
 KEY_ACTION: dict[int, Action] = {
     pygame.K_LEFT:   Action.MOVE_LEFT,
     pygame.K_RIGHT:  Action.MOVE_RIGHT,
@@ -23,48 +21,50 @@ KEY_ACTION: dict[int, Action] = {
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Play Tetris")
-    subparsers = parser.add_subparsers(dest="mode", required=True)
-
-    p = subparsers.add_parser("tetris", help="Play regular Tetris")
-    p.add_argument("--config", metavar="PATH", help="Path to a dataset Hydra config (e.g. config/tetris/overfit.yaml)")
-
-    p = subparsers.add_parser("wm", help="Play Tetris via World Model")
-    p.add_argument("--world-model", required=True, metavar="PATH", dest="world_model_path")
-    p.add_argument("--grid-probe",  required=True, metavar="PATH", dest="grid_probe_path")
-    p.add_argument("--config", required=True, metavar="PATH", help="Path to a dataset Hydra config (e.g. config/tetris/overfit.yaml)")
-
+    parser.add_argument("--scale",        type=int, default=4)
+    parser.add_argument("--config",      metavar="PATH",
+                        help="Dataset Hydra config (e.g. config/tetris/overfit.yaml)")
+    parser.add_argument("--gt",          action="store_true",
+                        help="Add a GtDynamics game")
+    parser.add_argument("--wm",          action="store_true",
+                        help="Add a WmDynamics game (requires --world-model and --grid-probe)")
+    parser.add_argument("--world-model", metavar="PATH", dest="world_model_path")
+    parser.add_argument("--grid-probe",  metavar="PATH", dest="grid_probe_path")
     return parser.parse_args()
 
 
-def make_game(args):
-    match args.mode:
-        case "tetris":
-            if args.config is not None:
-                return Tetris.from_config(OmegaConf.load(args.config).tetris)
-            else:
-                return Tetris()
-        case "wm":
-            cfg = OmegaConf.load(args.config).tetris
-            initial_tetris = Tetris.from_config(cfg)
-            tetris_kwargs = dict(width=cfg.width, height=cfg.height)
-            dynamics = WmDynamics(
-                world_model_path=args.world_model_path,
-                grid_probe_path=args.grid_probe_path,
-                tetris=initial_tetris,
-            )
-            return Tetris(dynamics=dynamics, **tetris_kwargs)
-        case _:
-            raise ValueError(f"Unknown mode: {args.mode}")
+def make_games(args) -> list[Tetris]:
+    cfg = OmegaConf.load(args.config).tetris if args.config else None
+    games = []
+
+    gt_tetris = Tetris.from_config(cfg) if cfg else Tetris()
+
+    if args.gt:
+        games.append(gt_tetris)
+
+    if args.wm:
+        dynamics = WmDynamics(
+            world_model_path=args.world_model_path,
+            grid_probe_path=args.grid_probe_path,
+            gt_tetris=gt_tetris,
+        )
+        tetris_kwargs = dict(width=cfg.width, height=cfg.height) if cfg else {}
+        games.append(Tetris(dynamics=dynamics, **tetris_kwargs))
+
+    if not games:
+        games.append(gt_tetris)
+
+    return games
 
 
 def main():
     args = parse_args()
     pygame.init()
 
-    game = make_game(args)
+    games = make_games(args)
+    scale = args.scale
 
-    surf = pygame.display.set_mode((224*SCALE, 224*SCALE))
-
+    surf = pygame.display.set_mode((224 * scale * len(games), 224 * scale))
     pygame.display.set_caption("tetris")
 
     while True:
@@ -74,13 +74,24 @@ def main():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     return
+                if event.key == pygame.K_r:
+                    games = make_games(args)
+                    continue
+                if event.key == pygame.K_t:
+                    for game in games:
+                        if isinstance(game.dynamics, WmDynamics):
+                            game.dynamics._reanchor_to_gt()
+                            game.dynamics._update_parent()
                 action = KEY_ACTION.get(event.key)
                 if action is not None:
-                    game.step(action)
+                    for game in games:
+                        game.step(action)
 
-        img = game.render()
+        frames = [game.render() for game in games]
+        img = np.concatenate(frames, axis=0)
         tile_surf = pygame.surfarray.make_surface(img)
-        pygame.transform.scale(tile_surf, (224*SCALE, 224*SCALE), surf)
+        scaled = pygame.transform.scale(tile_surf, (224 * scale * len(games), 224 * scale))
+        surf.blit(scaled, (0, 0))
         pygame.display.flip()
 
 

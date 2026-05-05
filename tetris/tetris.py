@@ -2,7 +2,7 @@ import enum
 import random
 import dataclasses as dc
 import stable_pretraining as spt
-from einops import rearrange
+from einops import rearrange, pack
 import sys
 import torch
 from typing import Optional
@@ -162,7 +162,6 @@ TILE_SET = ObjectSet()
 
 TILE_EMPTY = TILE_SET.add(TileDef( color=(0  , 0  , 0  ) ))
 TILE_I     = TILE_SET.add(TileDef( color=(0  , 240, 240) ))
-# TILE_I     = TILE_SET.add(TileDef( color=(100, 200, 255) ))
 TILE_L     = TILE_SET.add(TileDef( color=(240, 160, 0  ) ))
 TILE_J     = TILE_SET.add(TileDef( color=(0  , 0  , 240) ))
 TILE_O     = TILE_SET.add(TileDef( color=(240, 240, 0  ) ))
@@ -364,14 +363,19 @@ class WmDynamics:
         *,
         world_model_path: str,
         grid_probe_path: str,
-        tetris: 'Tetris',
+        gt_tetris: 'Tetris',
     ):
         self.world_model = torch.load(world_model_path, weights_only=False, map_location="cpu").eval().requires_grad_(False)
         self.grid_probe = torch.load(grid_probe_path, weights_only=False, map_location="cpu").eval().requires_grad_(False)
 
+        self.history_size = 3
+
+        self.gt_tetris = gt_tetris
+
+    def _reanchor_to_gt(self):
         info = {}
 
-        pixels = torch.from_numpy(tetris.render())
+        pixels = torch.from_numpy(self.gt_tetris.render())
         pixels = rearrange(pixels, "w h c -> 1 1 c h w")
         info["pixels"] = pixels
 
@@ -380,32 +384,41 @@ class WmDynamics:
         info = transform(info)
 
         self.world_model.encode(info)
-        self.state_emb = info["emb"]
+        self.state_emb_hist = info["emb"]
+        self.act_emb_hist = torch.empty((1, 0, 192))
 
     def _init(self, tetris):
         self.tetris = tetris
+        self._reanchor_to_gt()
         self._update_parent()
 
     def _update_parent(self):
-        grid = self.grid_probe(self.state_emb)
+        grid = self.grid_probe(self.state_emb_hist[:, (-1,), :])
         grid = grid.sigmoid() > 0.5
         grid = grid.numpy()
         grid = rearrange(grid, "1 1 (w h) -> w h", w=self.tetris.width, h=self.tetris.height)
         grid = grid.astype(np.uint8)
         self.tetris.grid = grid
 
-    def encode_action(cls, action: Optional[Action]):
-        action_onehot = np.zeros(len(Action))
+    def embed_action(self, action: Optional[Action]):
+        action_enc = torch.zeros(len(Action), dtype=torch.float32)
         if action is not None:
-            action_onehot[action-1] = 1
-        return action_onehot
+            action_enc[action-1] = 1
+        action_enc = rearrange(action_enc, "d -> 1 1 d")
+        action_emb = self.world_model.action_encoder(action_enc)
+        return action_emb
 
     def step(self, action: Action):
-        action = self.encode_action(action)
-        action = rearrange(action, "c -> 1 1 c")
-        action = torch.from_numpy(action)
-        action = self.world_model.action_encoder(action)
-        self.state_emb = self.world_model.predict(self.state_emb, action)
+        HS = self.history_size
+
+        act_emb = self.embed_action(action)
+        self.act_emb_hist = pack([self.act_emb_hist, act_emb], "b * d")[0][:, -HS:, :]
+
+        state_emb_hist = self.state_emb_hist
+        pred_state_emb = self.world_model.predict(state_emb_hist, self.act_emb_hist)[:, -1:, :]
+        state_emb_hist = pack([state_emb_hist, pred_state_emb], "b * d")[0][:, -HS:, :]
+        self.state_emb_hist = state_emb_hist
+
         self._update_parent()
 
 
