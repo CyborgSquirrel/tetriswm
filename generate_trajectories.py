@@ -78,7 +78,7 @@ class LazyDataset:
       shape = item.shape
       dtype = item.dtype
     else:
-      shape = (1,)
+      shape = ()
       dtype = type(item)
     self._ensure_initted(shape=shape, dtype=dtype)
 
