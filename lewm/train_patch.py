@@ -91,29 +91,29 @@ def run(cfg):
         raise RuntimeError()
     patch_num = (cfg.img_size // cfg.patch_size) ** 2
 
-    hidden_dim = encoder.config.hidden_size + patch_num * cfg.wm.patch_embed_dim
+    pred_hidden_dim = encoder.config.hidden_size
     embed_dim = cfg.wm.embed_dim
     effective_act_dim = cfg.data.dataset.frameskip * cfg.wm.action_dim
 
     predictor = ARPredictor(
         num_frames=cfg.wm.history_size,
         input_dim=embed_dim,
-        hidden_dim=hidden_dim,
-        output_dim=hidden_dim,
+        hidden_dim=pred_hidden_dim,
+        output_dim=pred_hidden_dim,
         **cfg.predictor,
     )
 
     action_encoder = Embedder(input_dim=effective_act_dim, emb_dim=embed_dim)
     
     projector = MLP(
-        input_dim=hidden_dim,
+        input_dim=encoder.config.hidden_size + patch_num * cfg.wm.patch_embed_dim,
         output_dim=embed_dim,
         hidden_dim=2048,
         norm_fn=torch.nn.BatchNorm1d,
     )
 
     predictor_proj = MLP(
-        input_dim=hidden_dim,
+        input_dim=pred_hidden_dim,
         output_dim=embed_dim,
         hidden_dim=2048,
         norm_fn=torch.nn.BatchNorm1d,
