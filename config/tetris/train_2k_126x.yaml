@@ -1,12 +1,13 @@
 out: ./mounts/.stable_worldmodel/tetris_${hydra:job.config_name}.h5
-traj_num: 1
-traj_len: 50
+traj_num: 2000
+traj_len: 1000
 seed: 42
-remove_actions: []
+remove_actions: [HARD_DROP, ROTATE_LEFT, ROTATE_RIGHT]
 
 tetris:
-  width: 10
-  height: 20
+  width: 8
+  height: 12
+  render_size: 126
   mino_generator:
     _target_: tetris.tetris.BagGenerator
     minoes: [I]

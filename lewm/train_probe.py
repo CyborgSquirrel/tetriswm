@@ -183,11 +183,20 @@ class ProbeModule(pl.LightningModule):
         )
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(
+        optimizer = torch.optim.AdamW(
             self.probe.parameters(),
             lr=self.cfg.optimizer.lr,
             weight_decay=self.cfg.optimizer.weight_decay,
         )
+        sched_cfg = self.cfg.get("scheduler", {})
+        if not sched_cfg or not sched_cfg.get("enabled", False):
+            return optimizer
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=self.trainer.max_epochs,
+            eta_min=sched_cfg.eta_min,
+        )
+        return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "epoch"}}
 
 
 def build_probe(latent_dim, out_dim, model_cfg):

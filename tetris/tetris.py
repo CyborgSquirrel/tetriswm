@@ -428,10 +428,13 @@ class Tetris:
         *,
         width: int = 10,
         height: int = 20,
+        render_size: int = 224,
         dynamics = None,
     ):
         self.width = width
         self.height = height
+
+        self.render_size = render_size
 
         self.tile_set = TILE_SET
         self.tile_color_lut = np.array([ tile.color for tile in TILE_SET.oid_to_obj ])
@@ -439,15 +442,20 @@ class Tetris:
         self.dynamics = dynamics or GtDynamics()
         self.dynamics._init(self)
 
-        with layout.Frame(224, 224):
+        with layout.Frame(self.render_size, self.render_size):
             with layout.Center():
-                self.lay_grid = layout.Rect(width*10, height*10)
+                self.lay_grid = layout.Rect(self.width*10, self.height*10)
 
     @classmethod
     def from_config(cls, cfg, *, rng=None):
         mino_generator = instantiate(cfg.mino_generator, rng=rng or np.random.default_rng())
         dynamics = GtDynamics(mino_generator=mino_generator)
-        return cls(width=cfg.width, height=cfg.height, dynamics=dynamics)
+        return cls(
+            width=cfg.width,
+            height=cfg.height,
+            render_size=cfg.render_size,
+            dynamics=dynamics,
+        )
 
     def step(self, action: Action):
         self.dynamics.step(action)
@@ -455,7 +463,7 @@ class Tetris:
     def render(self):
         COLOR_BG = (128, 128, 128)
 
-        canvas = np.zeros((224, 224, 3), dtype=np.uint8)
+        canvas = np.zeros((self.render_size, self.render_size, 3), dtype=np.uint8)
         canvas[:,:] = COLOR_BG
 
         grid = self.tile_color_lut[self.grid]

@@ -7,6 +7,7 @@ remove_actions: []
 tetris:
   width: 8
   height: 12
+  render_size: 224
   mino_generator:
     _target_: tetris.tetris.BagGenerator
     minoes: [I]

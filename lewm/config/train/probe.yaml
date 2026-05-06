@@ -31,6 +31,10 @@ optimizer:
   lr: 1e-3
   weight_decay: 1e-4
 
+scheduler:
+  enabled: True
+  eta_min: 1e-6
+
 wandb:
   enabled: False
   config:

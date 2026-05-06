@@ -32,6 +32,9 @@ class LazyDataset:
 
   def __exit__(self, exc_type, exc_value, traceback):
     self.entered = False
+    if not self.initted:
+      log.error("Exited without initializing dataset %r", self.name)
+      return
     self.dataset.resize(self.idx, axis=0)
 
   def _ensure_initted(self, *, shape=None, dtype=None):
