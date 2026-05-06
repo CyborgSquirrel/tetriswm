@@ -50,19 +50,13 @@ def cache_embeddings(world_model, dataloader, cfg, device):
         for batch in dataloader:
             pixels = batch["pixels"].to(device)
             masks = batch["tetris_grid_mask"]
-            b, t = pixels.shape[:2]
 
-            pixels_flat = rearrange(pixels.float(), "b t ... -> (b t) ...")
-            output = world_model.encoder(pixels_flat, interpolate_pos_encoding=True)
-            cls = output.last_hidden_state[:, 0]
-            if cfg.probe.latent_source == "projected":
-                cls = world_model.projector(cls)
-            elif cfg.probe.latent_source == "encoder_cls":
-                pass
-            else:
-                raise ValueError("probe.latent_source must be 'encoder_cls' or 'projected'")
+            info = {}
+            info["pixels"] = pixels
+            world_model.encode(info)
+            emb = info["emb"]
 
-            all_latents.append(cls.cpu())
+            all_latents.append(rearrange(emb.cpu(), "b t d -> (b t) d"))
             all_masks.append(rearrange(masks, "b t w h -> (b t) (w h)").float())
 
     return torch.cat(all_latents), torch.cat(all_masks)
