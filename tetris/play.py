@@ -48,8 +48,8 @@ def make_games(args) -> list[Tetris]:
             grid_probe_path=args.grid_probe_path,
             gt_tetris=gt_tetris,
         )
-        tetris_kwargs = dict(width=cfg.width, height=cfg.height) if cfg else {}
-        games.append(Tetris(dynamics=dynamics, **tetris_kwargs))
+        wm_tetris = Tetris.from_config(cfg, dynamics=dynamics)
+        games.append(wm_tetris)
 
     if not games:
         games.append(gt_tetris)

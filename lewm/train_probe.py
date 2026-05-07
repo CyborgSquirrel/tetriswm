@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from tqdm import tqdm
 import hydra
 import lightning as pl
 import stable_pretraining as spt
@@ -47,7 +48,7 @@ def cache_embeddings(world_model, dataloader, cfg, device):
     world_model = world_model.to(device)
     all_latents, all_masks = [], []
     with torch.no_grad():
-        for batch in dataloader:
+        for batch in tqdm(dataloader):
             pixels = batch["pixels"].to(device)
             masks = batch["tetris_grid_mask"]
 
@@ -215,11 +216,7 @@ def run(cfg):
     raw_dm = build_dataloaders(cfg)
     data_module = build_cached_dataloaders(world_model, raw_dm, cfg)
 
-    latent_dim = (
-        world_model.encoder.config.hidden_size
-        if cfg.probe.latent_source == "encoder_cls"
-        else cfg.wm.embed_dim
-    )
+    latent_dim = cfg.wm.embed_dim
     grid_cells = cfg.probe.grid_width * cfg.probe.grid_height
     probe = build_probe(latent_dim, grid_cells, cfg.probe.model)
 

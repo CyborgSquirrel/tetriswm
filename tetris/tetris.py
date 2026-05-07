@@ -11,10 +11,12 @@ from hydra.utils import instantiate
 from tetris import layout
 from tetris import draw
 import lewm.jepa
+import lewm.patch_jepa
 import lewm.module
 import lewm.utils
 # Checkpoints were saved when lewm submodules were importable as top-level; remap so pickle can find them.
 sys.modules.setdefault("jepa", lewm.jepa)
+sys.modules.setdefault("patch_jepa", lewm.patch_jepa)
 sys.modules.setdefault("module", lewm.module)
 
 
@@ -379,7 +381,7 @@ class WmDynamics:
         pixels = rearrange(pixels, "w h c -> 1 1 c h w")
         info["pixels"] = pixels
 
-        transforms = [lewm.utils.get_img_preprocessor(source='pixels', target='pixels', img_size=224)]
+        transforms = [lewm.utils.get_img_preprocessor(source='pixels', target='pixels', img_size=self.gt_tetris.render_size)]
         transform = spt.data.transforms.Compose(*transforms)
         info = transform(info)
 
@@ -447,9 +449,11 @@ class Tetris:
                 self.lay_grid = layout.Rect(self.width*10, self.height*10)
 
     @classmethod
-    def from_config(cls, cfg, *, rng=None):
-        mino_generator = instantiate(cfg.mino_generator, rng=rng or np.random.default_rng())
-        dynamics = GtDynamics(mino_generator=mino_generator)
+    def from_config(cls, cfg, *, rng=None, dynamics=None):
+        rng = rng or np.random.default_rng()
+        if dynamics is None:
+            mino_generator = instantiate(cfg.mino_generator, rng=rng)
+            dynamics = GtDynamics(mino_generator=mino_generator)
         return cls(
             width=cfg.width,
             height=cfg.height,

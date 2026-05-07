@@ -3,7 +3,8 @@ defaults:
   - data: tetris_probe
 
 output_model_name: lewm_tile_probe
-subdir: ${hydra:job.id}
+# subdir: ${hydra:job.id}
+subdir: ${now:%s}${oc.select:_${hydra:job.id},}
 resume_ckpt: null
 run_dir: null
 
