@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import wandb
 from tqdm import tqdm
 import hydra
 import lightning as pl
@@ -231,6 +232,7 @@ def run(cfg):
 
     logger = None
     if cfg.wandb.enabled:
+        wandb.finish()
         logger = WandbLogger(**cfg.wandb.config)
         logger.log_hyperparams(OmegaConf.to_container(cfg))
 

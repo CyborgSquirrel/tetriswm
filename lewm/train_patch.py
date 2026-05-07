@@ -2,6 +2,7 @@ import os
 from functools import partial
 from pathlib import Path
 
+import wandb
 import hydra
 import lightning as pl
 import stable_pretraining as spt
@@ -161,6 +162,7 @@ def run(cfg):
 
     logger = None
     if cfg.wandb.enabled:
+        wandb.finish()
         logger = WandbLogger(**cfg.wandb.config)
         logger.log_hyperparams(OmegaConf.to_container(cfg))
 
