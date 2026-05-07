@@ -3,7 +3,7 @@ defaults:
   - data: tetris
 
 output_model_name: lewmp
-subdir: ${hydra:job.id}
+subdir: ${now:%s}${oc.select:_${hydra:job.id},}
 
 num_workers: 6
 train_split: 0.9
