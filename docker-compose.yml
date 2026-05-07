@@ -19,7 +19,8 @@ services:
       # - ./.Xauthority.docker:/home/user/.Xauthority:rw
       - ./.Xauthority.docker:/home/user/.Xauthority:ro
 
-      - ./mounts/.stable_worldmodel:/home/user/.stable_worldmodel:rw
+      # - ./mounts/.stable_worldmodel:/home/user/.stable_worldmodel:rw
+      - ./stable_worldmodel:/home/user/.stable_worldmodel:rw
       - ./.venv:/mounts/venv:rw
     environment:
       # Wayland environment
