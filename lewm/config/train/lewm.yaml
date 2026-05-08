@@ -27,7 +27,8 @@ trainer:
 
 val:
   action_rank:
-    enabled: True
+    enabled_train: False
+    enabled_val: False
     actions:
       - [ 0, 0]
       - [ 1, 1]

@@ -47,7 +47,9 @@ def lejepa_forward(self, batch, stage, cfg):
     output["loss"] = output["pred_loss"] + lambd * output["sigreg_loss"]  
 
     # Action ranking
-    if stage == "validate" and OmegaConf.select(cfg, "val.action_rank.enabled", default=False):
+    if (   (stage == "validate" and OmegaConf.select(cfg, "val.action_rank.enabled_val", default=False))
+        or (stage == "fit"      and OmegaConf.select(cfg, "val.action_rank.enabled_train", default=False))
+    ):
         ar_acts = torch.tensor(OmegaConf.to_container(cfg.val.action_rank.actions, resolve=True), dtype=torch.float32)
         ar_act_num = len(ar_acts)
 
