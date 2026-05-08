@@ -21,6 +21,10 @@ ipython
 h5py
 hdf5plugin  # compression filters
 
+# Hydra
+hydra-core
+hydra-joblib-launcher
+
 # LSP server for editor integration
 python-lsp-server[all]
 python-lsp-isort

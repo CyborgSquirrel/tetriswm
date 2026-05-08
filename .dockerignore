@@ -45,6 +45,7 @@ Thumbs.db
 /data
 /mounts
 /*stable_worldmodel*
-/outputs
+outputs/
+wandb/
 
 x.env
