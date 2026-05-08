@@ -93,7 +93,7 @@ def run(cfg):
 
     dataset = swm.data.HDF5Dataset(**cfg.data.dataset, transform=None)
     transforms = [get_img_preprocessor(source='pixels', target='pixels', img_size=cfg.img_size)]
-    
+
     with open_dict(cfg):
         for col in cfg.data.dataset.keys_to_load:
             if col.startswith("pixels"):
@@ -104,17 +104,24 @@ def run(cfg):
 
             setattr(cfg.wm, f"{col}_dim", dataset.get_dim(col))
 
-    transform = spt.data.transforms.Compose(*transforms)
-    dataset.transform = transform
+    dataset.transform = spt.data.transforms.Compose(*transforms)
 
     rnd_gen = torch.Generator().manual_seed(cfg.seed)
-    if cfg.train_split is None:
-        print("WARNING: cfg.train_split is None, train and validation set are the same")
-        train_set, val_set = dataset, dataset
-    else:
-        train_set, val_set = spt.data.random_split(
-            dataset, lengths=[cfg.train_split, 1 - cfg.train_split], generator=rnd_gen
-        )
+    match cfg.train_split.by:
+        case "window":
+            train_set, val_set = spt.data.random_split(
+                dataset, lengths=[cfg.train_split.p, 1 - cfg.train_split.p], generator=rnd_gen
+            )
+        case "episode":
+            n_eps = len(dataset.lengths)
+            ep_order = torch.randperm(n_eps, generator=rnd_gen).tolist()
+            n_train = int(n_eps * cfg.train_split.p)
+            train_eps = set(ep_order[:n_train])
+            val_eps = set(ep_order[n_train:])
+            train_idx = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep in train_eps]
+            val_idx   = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep in val_eps]
+            train_set = torch.utils.data.Subset(dataset, train_idx)
+            val_set   = torch.utils.data.Subset(dataset, val_idx)
 
     train = torch.utils.data.DataLoader(
         train_set,

@@ -6,8 +6,11 @@ output_model_name: lewm
 checkpoint_interval: 1
 subdir: ${now:%s}_${hydra:job.id}
 
+train_split:
+  by: window  # or episode
+  p: 0.9
+
 num_workers: 6
-train_split: 0.9
 seed: 3072
 img_size: 224
 patch_size: 14
@@ -26,6 +29,7 @@ val:
   action_rank:
     enabled: True
     actions:
+      - [ 0, 0]
       - [ 1, 1]
       - [-1, 1]
       - [ 1,-1]
