@@ -3,6 +3,7 @@ defaults:
   - data: pusht
 
 output_model_name: lewm
+checkpoint_interval: 1
 subdir: ${now:%s}_${hydra:job.id}
 
 num_workers: 6
@@ -20,6 +21,19 @@ trainer:
   accelerator: gpu
   precision: bf16
   gradient_clip_val: 1.0
+
+val:
+  action_rank:
+    enabled: True
+    actions:
+      - [ 1, 1]
+      - [-1, 1]
+      - [ 1,-1]
+      - [-1,-1]
+      - [ 1, 0]
+      - [-1, 0]
+      - [ 0, 1]
+      - [ 0,-1]
 
 loader:
   # batch_size: 128
