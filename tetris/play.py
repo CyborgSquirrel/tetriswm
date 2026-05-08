@@ -19,40 +19,55 @@ KEY_ACTION: dict[int, Action] = {
 }
 
 
+class AppendGame(argparse.Action):
+    def __init__(self, option_strings, dest, game_type, **kwargs):
+        self.game_type = game_type
+        super().__init__(option_strings, dest, nargs=0, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        games = getattr(namespace, self.dest) or []
+        games.append({"type": self.game_type})
+        setattr(namespace, self.dest, games)
+
+
+class SetGameParam(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        games = getattr(namespace, "games")
+        if not games:
+            parser.error(f"{option_string} must follow --gt or --wm")
+        games[-1][self.dest] = values
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Play Tetris")
     parser.add_argument("--scale",        type=int, default=4)
-    parser.add_argument("--config",      metavar="PATH",
+    parser.add_argument("--config",       metavar="PATH",
                         help="Dataset Hydra config (e.g. config/tetris/overfit.yaml)")
-    parser.add_argument("--gt",          action="store_true",
-                        help="Add a GtDynamics game")
-    parser.add_argument("--wm",          action="store_true",
-                        help="Add a WmDynamics game (requires --world-model and --grid-probe)")
-    parser.add_argument("--world-model", metavar="PATH", dest="world_model_path")
-    parser.add_argument("--grid-probe",  metavar="PATH", dest="grid_probe_path")
+    parser.add_argument("--gt",           action=AppendGame, game_type="gt", dest="games")
+    parser.add_argument("--wm",           action=AppendGame, game_type="wm", dest="games")
+    parser.add_argument("--world-model",  action=SetGameParam, metavar="PATH")
+    parser.add_argument("--grid-probe",   action=SetGameParam, metavar="PATH")
+    parser.set_defaults(games=None)
     return parser.parse_args()
 
 
 def make_games(args) -> list[Tetris]:
     cfg = OmegaConf.load(args.config).tetris if args.config else None
-    games = []
 
     gt_tetris = Tetris.from_config(cfg) if cfg else Tetris()
 
-    if args.gt:
-        games.append(gt_tetris)
-
-    if args.wm:
-        dynamics = WmDynamics(
-            world_model_path=args.world_model_path,
-            grid_probe_path=args.grid_probe_path,
-            gt_tetris=gt_tetris,
-        )
-        wm_tetris = Tetris.from_config(cfg, dynamics=dynamics)
-        games.append(wm_tetris)
-
-    if not games:
-        games.append(gt_tetris)
+    game_specs = args.games or [{"type": "gt"}]
+    games = []
+    for spec in game_specs:
+        if spec["type"] == "gt":
+            games.append(gt_tetris)
+        elif spec["type"] == "wm":
+            dynamics = WmDynamics(
+                world_model_path=spec["world_model"],
+                grid_probe_path=spec["grid_probe"],
+                gt_tetris=gt_tetris,
+            )
+            games.append(Tetris.from_config(cfg, dynamics=dynamics))
 
     return games
 
