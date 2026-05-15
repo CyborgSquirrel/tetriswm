@@ -85,6 +85,10 @@ def lejepa_forward(self, batch, stage, cfg):
         logs[f"{stage}/{k}"] = v.detach()
 
     self.log_dict(logs, on_step=True, sync_dist=True)
+
+    # NOTE: This has to happen _after_ logging to wandb.
+    output["loss"] = self.rescale_loss_for_grad_acc(output["loss"])
+
     return output
 
 @hydra.main(version_base=None, config_path="./config/train", config_name="lewm")
