@@ -12,16 +12,23 @@ class JEPA(nn.Module):
 
     def __init__(
         self,
+        *,
         encoder,
         predictor,
+        action_trans=None,
         action_encoder,
         projector=None,
         pred_proj=None,
     ):
+        """
+        action_trans: normalization
+        """
+
         super().__init__()
 
         self.encoder = encoder
         self.predictor = predictor
+        self.action_trans = action_trans or nn.Identity()
         self.action_encoder = action_encoder
         self.projector = projector or nn.Identity()
         self.pred_proj = pred_proj or nn.Identity()
@@ -40,7 +47,7 @@ class JEPA(nn.Module):
         info["emb"] = rearrange(emb, "(b t) d -> b t d", b=b)
 
         if "action" in info:
-            info["act_emb"] = self.action_encoder(info["action"])
+            info["act_emb"] = self.action_encoder(self.action_trans(info["action"]))
 
         return info
 
@@ -68,6 +75,7 @@ class JEPA(nn.Module):
 
         assert "pixels" in info, "pixels not in info_dict"
         H = info["pixels"].size(2)
+        action_sequence = self.action_trans(action_sequence)
         B, S, T = action_sequence.shape[:3]
         act_0, act_future = torch.split(action_sequence, [H, T - H], dim=2)
         info["action"] = act_0

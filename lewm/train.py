@@ -7,13 +7,15 @@ import hydra
 import lightning as pl
 import stable_pretraining as spt
 import stable_worldmodel as swm
+import numpy as np
 import torch
 import torch.special
 from lightning.pytorch.loggers import WandbLogger
 from omegaconf import OmegaConf, open_dict
+from torch import nn
 
 from jepa import JEPA
-from module import ARPredictor, Embedder, MLP, SIGReg
+from module import ARPredictor, Embedder, MLP, SIGReg, Normalizer
 from utils import get_column_normalizer, get_img_preprocessor, ModelObjectCallBack
 from einops import repeat, rearrange, reduce
 
@@ -47,10 +49,10 @@ def lejepa_forward(self, batch, stage, cfg):
     output["loss"] = output["pred_loss"] + lambd * output["sigreg_loss"]  
 
     # Action ranking
-    if (   (stage == "validate" and OmegaConf.select(cfg, "val.action_rank.enabled_val", default=False))
-        or (stage == "fit"      and OmegaConf.select(cfg, "val.action_rank.enabled_train", default=False))
+    if (   (stage == "validate" and OmegaConf.select(cfg, "action_rank.enabled_val", default=False))
+        or (stage == "fit"      and OmegaConf.select(cfg, "action_rank.enabled_train", default=False))
     ):
-        ar_acts = torch.tensor(OmegaConf.to_container(cfg.val.action_rank.actions, resolve=True), dtype=torch.float32)
+        ar_acts = torch.tensor(OmegaConf.to_container(cfg.action_rank.actions, resolve=True), dtype=torch.float32)
         ar_act_num = len(ar_acts)
 
         ar_ctx_act_base = batch["action"][:,:ctx_len]  # (B, T, D_act*frameskip)
@@ -105,8 +107,8 @@ def run(cfg):
             if col.startswith("pixels"):
                 continue
 
-            normalizer = get_column_normalizer(dataset, col, col)
-            transforms.append(normalizer)
+            # normalizer = get_column_normalizer(dataset, col, col)
+            # transforms.append(normalizer)
 
             setattr(cfg.wm, f"{col}_dim", dataset.get_dim(col))
 
@@ -128,6 +130,8 @@ def run(cfg):
             val_idx   = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep in val_eps]
             train_set = torch.utils.data.Subset(dataset, train_idx)
             val_set   = torch.utils.data.Subset(dataset, val_idx)
+        case _:
+            raise ValueError(f"Unexpected {cfg.train_split.by=}")
 
     train = torch.utils.data.DataLoader(
         train_set,
@@ -162,8 +166,14 @@ def run(cfg):
         **cfg.predictor,
     )
 
+    action_trans = Normalizer.from_data(
+        torch.from_numpy(np.array(dataset.get_col_data("action"))),
+        dim=(0,),
+        #                                   b s t
+        post=lambda x: rearrange(x, "1 d -> 1 1 1 d"),
+    )
     action_encoder = Embedder(input_dim=effective_act_dim, emb_dim=embed_dim)
-    
+
     projector = MLP(
         input_dim=hidden_dim,
         output_dim=embed_dim,
@@ -181,6 +191,7 @@ def run(cfg):
     world_model = JEPA(
         encoder=encoder,
         predictor=predictor,
+        action_trans=action_trans,
         action_encoder=action_encoder,
         projector=projector,
         pred_proj=predictor_proj,

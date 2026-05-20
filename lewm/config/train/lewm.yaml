@@ -25,20 +25,19 @@ trainer:
   precision: bf16
   gradient_clip_val: 1.0
 
-val:
-  action_rank:
-    enabled_train: False
-    enabled_val: False
-    actions:
-      - [ 0, 0]
-      - [ 1, 1]
-      - [-1, 1]
-      - [ 1,-1]
-      - [-1,-1]
-      - [ 1, 0]
-      - [-1, 0]
-      - [ 0, 1]
-      - [ 0,-1]
+action_rank:
+  enabled_train: False
+  enabled_val: False
+  actions:
+    - [ 0, 0]
+    - [ 1, 1]
+    - [-1, 1]
+    - [ 1,-1]
+    - [-1,-1]
+    - [ 1, 0]
+    - [-1, 0]
+    - [ 0, 1]
+    - [ 0,-1]
 
 loader:
   # batch_size: 128

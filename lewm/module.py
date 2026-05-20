@@ -409,3 +409,26 @@ class ARPredictor(nn.Module):
         x = self.dropout(x)
         x = self.transformer(x, c)
         return x
+
+
+class Normalizer(nn.Module):
+    def __init__(self, mean, std):
+        super().__init__()
+        self.register_buffer("mean", mean)
+        self.register_buffer("std", std)
+
+    @classmethod
+    def from_data(cls, data, dim, *, post=None):
+        mean = torch.mean(data, dim=dim, keepdims=True).clone()
+        std = torch.std(data, dim=dim, keepdims=True).clone()
+        if post is not None:
+            mean = post(mean)
+            std = post(std)
+        return cls(
+            mean=mean,
+            std=std,
+        )
+
+    def forward(self, x):
+        x = (x - self.mean) / self.std
+        return x

@@ -16,8 +16,7 @@ services:
       # X11 fallback (XWayland) for apps that don't support Wayland
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       # X11 authentication - mount host's xauth file
-      # - ./.Xauthority.docker:/home/user/.Xauthority:rw
-      - ./.Xauthority.docker:/home/user/.Xauthority:ro
+      # - ./.Xauthority.docker:/home/user/.Xauthority:ro
 
       # - ./mounts/.stable_worldmodel:/home/user/.stable_worldmodel:rw
       - ./stable_worldmodel:/home/user/.stable_worldmodel:rw
