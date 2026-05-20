@@ -15,7 +15,7 @@ from omegaconf import OmegaConf, open_dict
 from torch import nn
 
 from jepa import JEPA
-from module import ARPredictor, Embedder, MLP, SIGReg, Normalizer
+from module import ARPredictor, Embedder, MLP, SIGReg, Normalizer, NanToNum
 from utils import get_column_normalizer, get_img_preprocessor, ModelObjectCallBack
 from einops import repeat, rearrange, reduce
 
@@ -30,7 +30,7 @@ def lejepa_forward(self, batch, stage, cfg):
     lambd = cfg.loss.sigreg.weight
 
     # Replace NaN values with 0 (occurs at sequence boundaries)
-    batch["action"] = torch.nan_to_num(batch["action"], 0.0)
+    # batch["action"] = torch.nan_to_num(batch["action"], 0.0)
 
     output = self.model.encode(batch)
 
@@ -46,41 +46,42 @@ def lejepa_forward(self, batch, stage, cfg):
     # LeWM loss
     output["pred_loss"] = (pred_emb - tgt_emb).pow(2).mean()
     output["sigreg_loss"]= self.sigreg(emb.transpose(0, 1))
-    output["loss"] = output["pred_loss"] + lambd * output["sigreg_loss"]  
+    output["loss"] = output["pred_loss"] + lambd * output["sigreg_loss"]
 
     # Action ranking
-    if (   (stage == "validate" and OmegaConf.select(cfg, "action_rank.enabled_val", default=False))
-        or (stage == "fit"      and OmegaConf.select(cfg, "action_rank.enabled_train", default=False))
-    ):
-        ar_acts = torch.tensor(OmegaConf.to_container(cfg.action_rank.actions, resolve=True), dtype=torch.float32)
-        ar_act_num = len(ar_acts)
+    with torch.no_grad():
+        if (   (stage == "validate" and OmegaConf.select(cfg, "action_rank.enabled_val", default=False))
+            or (stage == "fit"      and OmegaConf.select(cfg, "action_rank.enabled_train", default=False))
+        ):
+            ar_acts = torch.tensor(OmegaConf.to_container(cfg.action_rank.actions, resolve=True), dtype=torch.float32)
+            ar_act_num = len(ar_acts)
 
-        ar_ctx_act_base = batch["action"][:,:ctx_len]  # (B, T, D_act*frameskip)
+            ar_ctx_act_base = batch["action"][:,:ctx_len]  # (B, T, D_act*frameskip)
 
-        ar_pred_embs = []  # list of (B, n_preds, D_ctx_emb)
-        ar_pred_embs.append(pred_emb)
-        for ar_final_act in ar_acts:
-            ar_ctx_act = ar_ctx_act_base.clone()
-            ar_ctx_act[:, -1, -cfg.wm.action_dim:] = ar_final_act
-            ar_ctx_act = self.model.action_trans(ar_ctx_act)
-            ar_ctx_act_emb = self.model.action_encoder(ar_ctx_act)
+            ar_pred_embs = []  # list of (B, n_preds, D_ctx_emb)
+            ar_pred_embs.append(pred_emb)
+            for ar_final_act in ar_acts:
+                ar_ctx_act = ar_ctx_act_base.clone()
+                ar_ctx_act[:, -1, -cfg.wm.action_dim:] = ar_final_act
+                ar_ctx_act = self.model.action_trans(ar_ctx_act)
+                ar_ctx_act_emb = self.model.action_encoder(ar_ctx_act)
 
-            ar_pred_emb = self.model.predict(ctx_emb, ar_ctx_act_emb)
-            ar_pred_embs.append(ar_pred_emb)
-        ar_pred_embs = rearrange(ar_pred_embs, "n b n_preds d -> b n n_preds d")
+                ar_pred_emb = self.model.predict(ctx_emb, ar_ctx_act_emb)
+                ar_pred_embs.append(ar_pred_emb)
+            ar_pred_embs = rearrange(ar_pred_embs, "n b n_preds d -> b n n_preds d")
 
-        tgt_emb = rearrange(tgt_emb, "b n_preds d_ctx_emb -> b 1 n_preds d_ctx_emb")
-        err_emb = reduce((ar_pred_embs - tgt_emb).pow(2), "b n n_preds d -> b n", "mean")
+            tgt_emb = rearrange(tgt_emb, "b n_preds d_ctx_emb -> b 1 n_preds d_ctx_emb")
+            err_emb = reduce((ar_pred_embs - tgt_emb).pow(2), "b n n_preds d -> b n", "mean")
 
-        # error for gt action
-        gt_err = err_emb[:, (0,)]
-        # error for ranking actions
-        ar_err = err_emb[:, 1:]
+            # error for gt action
+            gt_err = err_emb[:, (0,)]
+            # error for ranking actions
+            ar_err = err_emb[:, 1:]
 
-        gt_rank_disc = reduce(gt_err >= ar_err, "b n -> b", "sum")
-        gt_rank_cont = gt_rank_disc / ar_act_num
+            gt_rank_disc = reduce(gt_err >= ar_err, "b n -> b", "sum")
+            gt_rank_cont = gt_rank_disc / ar_act_num
 
-        logs[f"{stage}/gt_rank"] = gt_rank_cont.mean().detach()
+            logs[f"{stage}/gt_rank"] = gt_rank_cont.mean().detach()
 
     for k, v in output.items():
         if "loss" not in k:
@@ -167,10 +168,14 @@ def run(cfg):
         **cfg.predictor,
     )
 
-    action_trans = Normalizer.from_data(
-        torch.from_numpy(np.array(dataset.get_col_data("action"))),
-        dim=(0,),
-        post=lambda x: repeat(rearrange(x, "1 d -> 1 1 d"), "1 1 d -> 1 1 (fs d)", fs=cfg.data.dataset.frameskip),
+    action_trans = nn.Sequential(
+        Normalizer.from_data(
+            torch.from_numpy(np.array(dataset.get_col_data("action"))),
+            dim=(0,),
+            post=lambda x: repeat(rearrange(x, "1 d -> 1 1 d"), "1 1 d -> 1 1 (fs d)", fs=cfg.data.dataset.frameskip),
+        ),
+        # Replace NaN values with 0 (occurs at sequence boundaries)
+        NanToNum(0.0),
     )
     action_encoder = Embedder(input_dim=effective_act_dim, emb_dim=embed_dim)
 

@@ -55,3 +55,8 @@ class ModelObjectCallBack(Callback):
             torch.save(model, path)
         except Exception as e:
             print(f"Error saving model object: {e}")
+
+def pipe(a, *fns):
+    for fn in fns:
+        a = fn(a)
+    return a

@@ -433,3 +433,13 @@ class Normalizer(nn.Module):
     def forward(self, x):
         x = (x - self.mean) / self.std
         return x
+
+
+class NanToNum(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.args = args
+        self.kwargs = kwargs
+
+    def forward(self, x):
+        return torch.nan_to_num(x, *self.args, **self.kwargs)
