@@ -419,6 +419,7 @@ class Normalizer(nn.Module):
 
     @classmethod
     def from_data(cls, data, dim, *, post=None):
+        data = data[~torch.isnan(data).any(dim=tuple(range(1, data.ndim)))]
         mean = torch.mean(data, dim=dim, keepdims=True).clone()
         std = torch.std(data, dim=dim, keepdims=True).clone()
         if post is not None:

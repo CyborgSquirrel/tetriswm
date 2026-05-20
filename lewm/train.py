@@ -62,6 +62,7 @@ def lejepa_forward(self, batch, stage, cfg):
         for ar_final_act in ar_acts:
             ar_ctx_act = ar_ctx_act_base.clone()
             ar_ctx_act[:, -1, -cfg.wm.action_dim:] = ar_final_act
+            ar_ctx_act = self.model.action_trans(ar_ctx_act)
             ar_ctx_act_emb = self.model.action_encoder(ar_ctx_act)
 
             ar_pred_emb = self.model.predict(ctx_emb, ar_ctx_act_emb)
