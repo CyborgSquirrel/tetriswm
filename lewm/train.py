@@ -169,8 +169,7 @@ def run(cfg):
     action_trans = Normalizer.from_data(
         torch.from_numpy(np.array(dataset.get_col_data("action"))),
         dim=(0,),
-        #                                   b s t
-        post=lambda x: rearrange(x, "1 d -> 1 1 1 d"),
+        post=lambda x: repeat(rearrange(x, "1 d -> 1 1 d"), "1 1 d -> 1 1 (fs d)", fs=cfg.data.dataset.frameskip),
     )
     action_encoder = Embedder(input_dim=effective_act_dim, emb_dim=embed_dim)
 
