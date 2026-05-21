@@ -8,8 +8,11 @@ subdir: ${now:%s}_${hydra:job.id}
 resume_ckpt: null
 run_dir: null
 
+train_split:
+  by: window  # or episode
+  p: 0.9
+
 num_workers: 6
-train_split: 0.9
 seed: 3072
 img_size: 224
 
