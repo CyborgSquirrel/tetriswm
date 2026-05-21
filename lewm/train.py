@@ -15,7 +15,7 @@ from omegaconf import OmegaConf, open_dict
 from torch import nn
 
 from jepa import JEPA
-from module import ARPredictor, Embedder, MLP, SIGReg, Normalizer, NanToNum
+from module import ARPredictor, Embedder, MLP, SIGReg, Normalizer, NanToNum, RearrangeWrap
 from utils import get_column_normalizer, get_img_preprocessor, ModelObjectCallBack
 from einops import repeat, rearrange, reduce
 import contextlib as ctl
@@ -180,10 +180,16 @@ def run(cfg):
     )
 
     action_trans = nn.Sequential(
-        Normalizer.from_data(
-            torch.from_numpy(np.array(dataset.get_col_data("action"))),
-            dim=(0,),
-            post=lambda x: repeat(rearrange(x, "1 d -> 1 1 d"), "1 1 d -> 1 1 (fs d)", fs=cfg.data.dataset.frameskip),
+        RearrangeWrap(
+            Normalizer.from_data(
+                torch.from_numpy(np.array(dataset.get_col_data("action"))),
+                dim=(0,),
+            ),
+            pattern_in="b t (fs d) -> (b t fs) d",
+            pattern_out="(b t fs) d -> b t (fs d)",
+            capture="b t _",
+            fs=cfg.data.dataset.frameskip,
+            d=cfg.wm.action_dim,
         ),
         # Replace NaN values with 0 (occurs at sequence boundaries)
         NanToNum(0.0),
@@ -241,7 +247,10 @@ def run(cfg):
     if cfg.wandb.enabled:
         wandb.finish()
         logger = WandbLogger(**cfg.wandb.config)
-        logger.log_hyperparams(OmegaConf.to_container(cfg))
+        logger.log_hyperparams({
+            "res": OmegaConf.to_container(cfg, resolve=True),
+            "raw": OmegaConf.to_container(cfg, resolve=False),
+        })
 
     run_dir.mkdir(parents=True, exist_ok=True)
     with open(run_dir / "config.yaml", "w") as f:

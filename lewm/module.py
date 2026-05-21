@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from einops import rearrange
+from einops import rearrange, parse_shape
 
 def modulate(x, shift, scale):
     """AdaLN-zero modulation"""
@@ -418,13 +418,10 @@ class Normalizer(nn.Module):
         self.register_buffer("std", std)
 
     @classmethod
-    def from_data(cls, data, dim, *, post=None):
+    def from_data(cls, data, dim):
         data = data[~torch.isnan(data).any(dim=tuple(range(1, data.ndim)))]
         mean = torch.mean(data, dim=dim, keepdims=True).clone()
         std = torch.std(data, dim=dim, keepdims=True).clone()
-        if post is not None:
-            mean = post(mean)
-            std = post(std)
         return cls(
             mean=mean,
             std=std,
@@ -432,6 +429,25 @@ class Normalizer(nn.Module):
 
     def forward(self, x):
         x = (x - self.mean) / self.std
+        return x
+
+
+class RearrangeWrap(nn.Module):
+    """Applies a module between two rearranges, forwarding captured input dim sizes to the output pattern."""
+
+    def __init__(self, module, pattern_in, pattern_out, capture=None, **axes):
+        super().__init__()
+        self.module = module
+        self.pattern_in = pattern_in
+        self.pattern_out = pattern_out
+        self.capture = capture
+        self.axes = axes
+
+    def forward(self, x):
+        captured = parse_shape(x, self.capture) if self.capture else {}
+        x = rearrange(x, self.pattern_in, **self.axes)
+        x = self.module(x)
+        x = rearrange(x, self.pattern_out, **{**self.axes, **captured})
         return x
 
 
