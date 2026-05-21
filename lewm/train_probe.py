@@ -21,19 +21,35 @@ def build_dataloaders(cfg):
         get_img_preprocessor(source="pixels", target="pixels", img_size=cfg.img_size)
     ]
 
-    with open_dict(cfg):
-        for col in cfg.data.dataset.keys_to_load:
-            if col.startswith("pixels") or col == "tetris_grid_mask":
-                continue
-            normalizer = get_column_normalizer(dataset, col, col)
-            transforms.append(normalizer)
+    # with open_dict(cfg):
+    #     for col in cfg.data.dataset.keys_to_load:
+    #         if col.startswith("pixels") or col == "tetris_grid_mask":
+    #             continue
+    #         normalizer = get_column_normalizer(dataset, col, col)
+    #         transforms.append(normalizer)
 
     dataset.transform = spt.data.transforms.Compose(*transforms)
 
     rnd_gen = torch.Generator().manual_seed(cfg.seed)
-    train_set, val_set = spt.data.random_split(
-        dataset, lengths=[cfg.train_split, 1 - cfg.train_split], generator=rnd_gen
-    )
+    match cfg.train_split.by:
+        case "window":
+            train_set, val_set = spt.data.random_split(
+                dataset,
+                lengths=[cfg.train_split.p, 1 - cfg.train_split.p],
+                generator=rnd_gen,
+            )
+        case "episode":
+            n_eps = len(dataset.lengths)
+            ep_order = torch.randperm(n_eps, generator=rnd_gen).tolist()
+            n_train = int(n_eps * cfg.train_split.p)
+            train_eps = set(ep_order[:n_train])
+            val_eps = set(ep_order[n_train:])
+            train_idx = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep in train_eps]
+            val_idx   = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep in val_eps]
+            train_set = torch.utils.data.Subset(dataset, train_idx)
+            val_set   = torch.utils.data.Subset(dataset, val_idx)
+        case _:
+            raise ValueError(f"Unexpected {cfg.train_split.by=}")
 
     train = torch.utils.data.DataLoader(
         train_set, **cfg.loader, shuffle=True, drop_last=True, generator=rnd_gen

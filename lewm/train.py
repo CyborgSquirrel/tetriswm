@@ -131,7 +131,9 @@ def run(cfg):
     match cfg.train_split.by:
         case "window":
             train_set, val_set = spt.data.random_split(
-                dataset, lengths=[cfg.train_split.p, 1 - cfg.train_split.p], generator=rnd_gen
+                dataset,
+                lengths=[cfg.train_split.p, 1 - cfg.train_split.p],
+                generator=rnd_gen,
             )
         case "episode":
             n_eps = len(dataset.lengths)
