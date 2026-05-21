@@ -18,6 +18,17 @@ from jepa import JEPA
 from module import ARPredictor, Embedder, MLP, SIGReg, Normalizer, NanToNum
 from utils import get_column_normalizer, get_img_preprocessor, ModelObjectCallBack
 from einops import repeat, rearrange, reduce
+import contextlib as ctl
+
+
+@ctl.contextmanager
+def set_eval(model: nn.Module):
+    training = model.training
+    model.eval()
+    try:
+        yield
+    finally:
+        model.train(training)
 
 
 def lejepa_forward(self, batch, stage, cfg):
@@ -49,7 +60,7 @@ def lejepa_forward(self, batch, stage, cfg):
     output["loss"] = output["pred_loss"] + lambd * output["sigreg_loss"]
 
     # Action ranking
-    with torch.no_grad():
+    with torch.no_grad(), set_eval(self.model):
         if (   (stage == "validate" and OmegaConf.select(cfg, "action_rank.enabled_val", default=False))
             or (stage == "fit"      and OmegaConf.select(cfg, "action_rank.enabled_train", default=False))
         ):
