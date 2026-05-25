@@ -56,6 +56,46 @@ class ModelObjectCallBack(Callback):
         except Exception as e:
             print(f"Error saving model object: {e}")
 
+
+class _Agg:
+    def update(self, item):
+        raise NotImplementedError
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        pass
+
+
+class agg:
+    class min(_Agg):
+        def __init__(self, key=None):
+            self._key = key
+            self._best_key = None
+            self.result = None
+
+        def update(self, item):
+            k = self._key(item) if self._key else item
+            if self.result is None or k < self._best_key:
+                self.result = item
+                self._best_key = k
+
+    class max(_Agg):
+        def __init__(self, key=None):
+            self._key = key
+            self._best_key = None
+            self.result = None
+
+        def update(self, item):
+            k = self._key(item) if self._key else item
+            if self.result is None or k > self._best_key:
+                self.result = item
+                self._best_key = k
+
+
+
+
 def pipe(a, *fns):
     for fn in fns:
         a = fn(a)

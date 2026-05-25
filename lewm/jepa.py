@@ -33,18 +33,22 @@ class JEPA(nn.Module):
         self.projector = projector or nn.Identity()
         self.pred_proj = pred_proj or nn.Identity()
 
+    def encode_pixels(self, pixels):
+        pixels = pixels.float()
+        b = pixels.size(0)
+        pixels = rearrange(pixels, "b t ... -> (b t) ...")  # flatten for encoding
+        output = self.encoder(pixels, interpolate_pos_encoding=True)
+        pixels_emb = output.last_hidden_state[:, 0]  # cls token
+        emb = self.projector(pixels_emb)
+        emb = rearrange(emb, "(b t) d -> b t d", b=b)
+        return emb
+
     def encode(self, info):
         """Encode observations and actions into embeddings.
         info: dict with pixels and action keys
         """
 
-        pixels = info['pixels'].float()
-        b = pixels.size(0)
-        pixels = rearrange(pixels, "b t ... -> (b t) ...") # flatten for encoding
-        output = self.encoder(pixels, interpolate_pos_encoding=True)
-        pixels_emb = output.last_hidden_state[:, 0]  # cls token
-        emb = self.projector(pixels_emb)
-        info["emb"] = rearrange(emb, "(b t) d -> b t d", b=b)
+        info["emb"] = encode_pixels(info["pixels"])
 
         if "action" in info:
             info["act_emb"] = self.action_encoder(self.action_trans(info["action"]))

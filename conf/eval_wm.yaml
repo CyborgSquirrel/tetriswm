@@ -1,0 +1,10 @@
+defaults:
+  - lewm_train_tetris
+  - _self_
+
+subdir: ${now:%s}_${hydra:job.id}
+
+eval:
+  checkpoint: ???
+  dataset_path: ${data.dataset.name}
+  episode_idx: ???

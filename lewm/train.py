@@ -106,7 +106,7 @@ def lejepa_forward(self, batch, stage, cfg):
 
     return output
 
-@hydra.main(version_base=None, config_path="./config/train", config_name="lewm")
+@hydra.main(version_base=None, config_path="../conf", config_name="train_lewm")
 def run(cfg):
     #########################
     ##       dataset       ##
