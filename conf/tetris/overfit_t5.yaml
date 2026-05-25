@@ -1,4 +1,3 @@
-# out: /home/user/.stable_worldmodel/tetris_${hydra:job.config_name}.h5
 out: tetris_overfit_t5
 traj_num: 2
 traj_len: 5

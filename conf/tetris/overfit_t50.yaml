@@ -1,0 +1,13 @@
+out: tetris_overfit_t10
+traj_num: 2
+traj_len: 50
+seed: 42
+remove_actions: []
+
+tetris:
+  width: 8
+  height: 12
+  render_size: 126
+  mino_generator:
+    _target_: tetris.tetris.BagGenerator
+    minoes: [I]

@@ -16,7 +16,7 @@ from utils import LazyDataset
 log = logging.getLogger(__name__)
 
 
-@hydra.main(config_path="config/tetris/", config_name="overfit", version_base=None)
+@hydra.main(config_path="conf/tetris/", config_name="overfit", version_base=None)
 def main(cfg: DictConfig):
   rng: np.random.Generator = np.random.default_rng(seed=cfg.seed)
 

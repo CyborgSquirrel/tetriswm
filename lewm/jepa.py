@@ -48,7 +48,7 @@ class JEPA(nn.Module):
         info: dict with pixels and action keys
         """
 
-        info["emb"] = encode_pixels(info["pixels"])
+        info["emb"] = self.encode_pixels(info["pixels"])
 
         if "action" in info:
             info["act_emb"] = self.action_encoder(self.action_trans(info["action"]))
