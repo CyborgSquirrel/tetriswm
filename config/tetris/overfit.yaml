@@ -1,4 +1,4 @@
-out: ./mounts/.stable_worldmodel/tetris_${hydra:job.config_name}.h5
+out: /home/user/.stable_worldmodel/tetris_${hydra:job.config_name}.h5
 traj_num: 1
 traj_len: 50
 seed: 42

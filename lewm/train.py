@@ -145,6 +145,12 @@ def run(cfg):
             val_idx   = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep in val_eps]
             train_set = torch.utils.data.Subset(dataset, train_idx)
             val_set   = torch.utils.data.Subset(dataset, val_idx)
+        case "episode_idx":
+            train_eps = set(cfg.train_split.idx)
+            train_idx = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep     in train_eps]
+            val_idx   = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep not in train_eps]
+            train_set = torch.utils.data.Subset(dataset, train_idx)
+            val_set   = torch.utils.data.Subset(dataset, val_idx)
         case _:
             raise ValueError(f"Unexpected {cfg.train_split.by=}")
 

@@ -7,8 +7,14 @@ checkpoint_interval: 1
 subdir: ${now:%s}_${hydra:job.id}
 
 train_split:
-  by: window  # or episode
+  by: window
   p: 0.9
+
+  # by: episode
+  # p: 0.9
+
+  # by: episode_idx
+  # idx: [0]
 
 num_workers: 6
 seed: 3072
