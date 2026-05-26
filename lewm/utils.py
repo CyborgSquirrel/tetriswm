@@ -3,6 +3,7 @@ import torch
 from pathlib import Path
 from stable_pretraining import data as dt
 from lightning.pytorch.callbacks import Callback
+import contextlib as ctl
 
 def get_img_preprocessor(source: str, target: str, img_size: int = 224):
     imagenet_stats = dt.dataset_stats.ImageNet
@@ -102,7 +103,7 @@ def pipe(a, *fns):
     return a
 
 
-@contextmanager
+@ctl.contextmanager
 def torch_printoptions(**kwargs):
     # torch doesn't expose a getter, so we patch __repr__ options via this trick
     import torch._tensor_str as ts
