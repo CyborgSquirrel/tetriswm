@@ -9,6 +9,7 @@ import stable_pretraining as spt
 import stable_worldmodel as swm
 import numpy as np
 import torch
+import torch.nn.functional as F
 import torch.special
 from lightning.pytorch.loggers import WandbLogger
 from omegaconf import OmegaConf, open_dict
@@ -19,6 +20,102 @@ from module import ARPredictor, Embedder, MLP, SIGReg, Normalizer, NanToNum, Rea
 from utils import get_column_normalizer, get_img_preprocessor, ModelObjectCallBack
 from einops import repeat, rearrange, reduce
 import contextlib as ctl
+
+
+def build_grid_mask_probe(latent_dim, out_dim, model_cfg):
+    kind = model_cfg.type
+    if kind == "linear":
+        return torch.nn.Linear(latent_dim, out_dim)
+    elif kind == "mlp":
+        hidden_dim = model_cfg.hidden_dim
+        num_layers = model_cfg.num_layers
+        layers = [torch.nn.Linear(latent_dim, hidden_dim), torch.nn.GELU()]
+        for _ in range(num_layers - 1):
+            layers += [torch.nn.Linear(hidden_dim, hidden_dim), torch.nn.GELU()]
+        layers.append(torch.nn.Linear(hidden_dim, out_dim))
+        return torch.nn.Sequential(*layers)
+    else:
+        raise ValueError(f"grid_mask_probe.model.type must be 'linear' or 'mlp', got '{kind}'")
+
+
+def _reset_parameters(m):
+    if hasattr(m, "reset_parameters"):
+        m.reset_parameters()
+
+
+class GridMaskProbeCallback(pl.Callback):
+    def __init__(self, cfg, run_dir):
+        self.cfg = cfg
+        self.run_dir = run_dir
+
+    def on_fit_start(self, trainer, pl_module):
+        pl_module.grid_mask_probe_opt = torch.optim.AdamW(
+            pl_module.grid_mask_probe.parameters(),
+            lr=self.cfg.grid_mask_probe.optimizer.lr,
+            weight_decay=self.cfg.grid_mask_probe.optimizer.weight_decay,
+        )
+
+    def _probe_step(self, pl_module, outputs, batch, stage):
+        if "tetris_grid_mask" not in batch:
+            return None
+        gmp_latents = rearrange(outputs["emb"].detach().float(), "b t d -> (b t) d")
+        gmp_masks = rearrange(batch["tetris_grid_mask"].float().to(gmp_latents.device),
+                              "b t w h -> (b t) (w h)")
+        gmp_logits = pl_module.grid_mask_probe(gmp_latents)
+        gmp_loss = F.binary_cross_entropy_with_logits(gmp_logits, gmp_masks)
+
+        if stage == "fit":
+            pl_module.grid_mask_probe_opt.zero_grad()
+            gmp_loss.backward()
+            pl_module.grid_mask_probe_opt.step()
+
+        with torch.no_grad():
+            gmp_preds = gmp_logits.sigmoid() > 0.5
+            gmp_acc = (gmp_preds == gmp_masks.bool()).float().mean()
+
+        pl_module.log_dict({
+            f"probe/{stage}/bce_loss": gmp_loss.detach(),
+            f"probe/{stage}/pixel_acc": gmp_acc,
+        }, on_step=True, sync_dist=True)
+
+        return gmp_masks, gmp_logits
+
+    def _log_mask_preview(self, trainer, gmp_masks, gmp_logits, stage):
+        n = min(self.cfg.grid_mask_probe.preview_images, gmp_masks.size(0))
+        w, h = self.cfg.grid_mask_probe.grid_width, self.cfg.grid_mask_probe.grid_height
+        gt   = rearrange(gmp_masks[:n], "n (w h) -> n 1 h w", w=w, h=h)
+        pred = rearrange((gmp_logits[:n].sigmoid() > 0.5).float(), "n (w h) -> n 1 h w", w=w, h=h)
+        gt_imgs   = F.interpolate(gt,   scale_factor=10, mode="nearest")
+        pred_imgs = F.interpolate(pred, scale_factor=10, mode="nearest")
+        trainer.logger.log_image(
+            key=f"probe/{stage}/masks",
+            images=[*gt_imgs, *pred_imgs],
+            caption=[f"gt_{i}" for i in range(n)] + [f"pred_{i}" for i in range(n)],
+        )
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        result = self._probe_step(pl_module, outputs, batch, "fit")
+        if batch_idx == 0 and trainer.is_global_zero and trainer.logger and result is not None:
+            self._log_mask_preview(trainer, *result, "fit")
+
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        result = self._probe_step(pl_module, outputs, batch, "validate")
+        if batch_idx == 0 and trainer.is_global_zero and trainer.logger and result is not None:
+            self._log_mask_preview(trainer, *result, "validate")
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        interval = OmegaConf.select(self.cfg, "grid_mask_probe.checkpoint_interval")
+        if interval is None:
+            return
+        epoch = trainer.current_epoch
+        if (epoch + 1) % interval == 0:
+            path = self.run_dir / f"grid_mask_probe_epoch_{epoch:04d}.pt"
+            torch.save(pl_module.grid_mask_probe, path)
+
+    def on_train_epoch_start(self, trainer, pl_module):
+        interval = OmegaConf.select(self.cfg, "grid_mask_probe.reset_interval")
+        if trainer.current_epoch % interval == 0:
+            pl_module.grid_mask_probe.apply(_reset_parameters)
 
 
 @ctl.contextmanager
@@ -244,6 +341,12 @@ def run(cfg):
         optim=optimizers,
     )
 
+    if OmegaConf.select(cfg, "grid_mask_probe.enabled", default=False):
+        grid_cells = cfg.grid_mask_probe.grid_width * cfg.grid_mask_probe.grid_height
+        world_model.grid_mask_probe = build_grid_mask_probe(
+            cfg.wm.embed_dim, grid_cells, cfg.grid_mask_probe.model
+        )
+
     ##########################
     ##       training       ##
     ##########################
@@ -269,9 +372,13 @@ def run(cfg):
         epoch_interval=cfg.checkpoint_interval,
     )
 
+    callbacks = [object_dump_callback]
+    if OmegaConf.select(cfg, "grid_mask_probe.enabled", default=False):
+        callbacks.append(GridMaskProbeCallback(cfg, run_dir))
+
     trainer = pl.Trainer(
         **cfg.trainer,
-        callbacks=[object_dump_callback],
+        callbacks=callbacks,
         num_sanity_val_steps=1,
         logger=logger,
         enable_checkpointing=True,

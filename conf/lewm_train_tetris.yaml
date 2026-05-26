@@ -12,6 +12,7 @@ data:
     keys_to_load:
       - pixels
       - action
+      - tetris_grid_mask
     keys_to_cache:
       - action
 
@@ -87,3 +88,18 @@ loss:
     kwargs:
       knots: 17
       num_proj: 1024
+
+grid_mask_probe:
+  enabled: True
+  grid_width: ${tetris.tetris.width}
+  grid_height: ${tetris.tetris.height}
+  checkpoint_interval: ${checkpoint_interval}
+  reset_interval: ${checkpoint_interval}  # reset probe weights every N epochs
+  preview_images: 8
+  model:
+    type: linear
+    hidden_dim: 512
+    num_layers: 2
+  optimizer:
+    lr: 1e-3
+    weight_decay: 1e-4
