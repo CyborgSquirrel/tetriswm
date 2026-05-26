@@ -32,7 +32,7 @@ train_split:
 
 num_workers: 6
 seed: 3072
-img_size: 224
+img_size: ${tetris.tetris.render_size}
 patch_size: 14
 encoder_scale: tiny
 dump_object: True
