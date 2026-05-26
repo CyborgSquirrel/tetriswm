@@ -17,7 +17,7 @@ from torch import nn
 
 from jepa import JEPA
 from module import ARPredictor, Embedder, MLP, SIGReg, Normalizer, NanToNum, RearrangeWrap
-from utils import get_column_normalizer, get_img_preprocessor, ModelObjectCallBack
+from utils import get_column_normalizer, get_img_preprocessor, ModelObjectCallBack, torch_printoptions
 from einops import repeat, rearrange, reduce
 import contextlib as ctl
 
@@ -225,6 +225,7 @@ def run(cfg):
     dataset.transform = spt.data.transforms.Compose(*transforms)
 
     rnd_gen = torch.Generator().manual_seed(cfg.seed)
+    # TODO: log which episodes/windows were sorted into train/validation
     match cfg.train_split.by:
         case "window":
             train_set, val_set = spt.data.random_split(
@@ -238,6 +239,10 @@ def run(cfg):
             n_train = int(n_eps * cfg.train_split.p)
             train_eps = set(ep_order[:n_train])
             val_eps = set(ep_order[n_train:])
+            if n_eps <= 1000:
+                with torch_printoptions(threshold=torch.inf):
+                    print(f"{train_eps=}")
+                    print(f"{val_eps=}")
             train_idx = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep in train_eps]
             val_idx   = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep in val_eps]
             train_set = torch.utils.data.Subset(dataset, train_idx)

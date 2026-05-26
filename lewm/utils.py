@@ -100,3 +100,20 @@ def pipe(a, *fns):
     for fn in fns:
         a = fn(a)
     return a
+
+
+@contextmanager
+def torch_printoptions(**kwargs):
+    # torch doesn't expose a getter, so we patch __repr__ options via this trick
+    import torch._tensor_str as ts
+    old = {
+        "threshold": ts.PRINT_OPTS.threshold,
+        "precision": ts.PRINT_OPTS.precision,
+        "linewidth": ts.PRINT_OPTS.linewidth,
+        "sci_mode": ts.PRINT_OPTS.sci_mode,
+    }
+    torch.set_printoptions(**kwargs)
+    try:
+        yield
+    finally:
+        torch.set_printoptions(**old)
