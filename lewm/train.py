@@ -277,9 +277,27 @@ def run(cfg):
         use_mask_token=False,
     )
 
-    hidden_dim = encoder.config.hidden_size
-    embed_dim = cfg.wm.get("embed_dim", hidden_dim)
+    if cfg.img_size % cfg.patch_size != 0:
+        raise RuntimeError()
+    patch_num = (cfg.img_size // cfg.patch_size) ** 2
+
+    enc_hidden_dim = encoder.config.hidden_size
+    hidden_dim = cfg.wm.hidden_dim
+    embed_dim = cfg.wm.embed_dim
     effective_act_dim = cfg.data.dataset.frameskip * cfg.wm.action_dim
+
+    patch_project_dim = OmegaConf.select(cfg, "wm.patch_project_dim", default=None)
+    projector_input_dim = enc_hidden_dim
+    patch_proj = None
+    if patch_project_dim is not None:
+        projector_input_dim += patch_project_dim * patch_num
+        patch_proj = nn.Linear(enc_hidden_dim, patch_project_dim)
+        # patch_proj = MLP(
+        #     input_dim=projector_input_dim,
+        #     output_dim=embed_dim,
+        #     hidden_dim=2048,
+        #     # norm_fn=torch.nn.BatchNorm1d,
+        # )
 
     predictor = ARPredictor(
         num_frames=cfg.wm.history_size,
@@ -307,7 +325,7 @@ def run(cfg):
     action_encoder = Embedder(input_dim=effective_act_dim, emb_dim=embed_dim)
 
     projector = MLP(
-        input_dim=hidden_dim,
+        input_dim=projector_input_dim,
         output_dim=embed_dim,
         hidden_dim=2048,
         norm_fn=torch.nn.BatchNorm1d,
@@ -327,6 +345,7 @@ def run(cfg):
         action_encoder=action_encoder,
         projector=projector,
         pred_proj=predictor_proj,
+        patch_proj=patch_proj,
     )
 
     optimizers = {

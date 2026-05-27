@@ -145,13 +145,13 @@ def run(cfg):
         best_l2 = best.result[0]
         best_emb = best.result[1]
         best_action = best.result[2]
+        act_match = torch.all(torch.isclose(action, best_action)).item()
 
-        print(f"Best action ({best_l2:.5f})", best_action)
+        print(f"Best action ({best_l2:.5f}), {act_match=}", best_action)
 
         emb_hist.append(best_emb)
         act_hist[-1] = best_action
 
-        act_match = torch.all(torch.isclose(action, best_action))
         act_match_hist.append(act_match)
 
     act_match_hist = np.array(act_match_hist)

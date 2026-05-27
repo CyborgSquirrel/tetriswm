@@ -19,6 +19,7 @@ class JEPA(nn.Module):
         action_encoder,
         projector=None,
         pred_proj=None,
+        patch_proj=None,
     ):
         """
         action_trans: normalization
@@ -32,13 +33,25 @@ class JEPA(nn.Module):
         self.action_encoder = action_encoder
         self.projector = projector or nn.Identity()
         self.pred_proj = pred_proj or nn.Identity()
+        self.patch_proj = patch_proj
 
     def encode_pixels(self, pixels):
         pixels = pixels.float()
         b = pixels.size(0)
         pixels = rearrange(pixels, "b t ... -> (b t) ...")  # flatten for encoding
         output = self.encoder(pixels, interpolate_pos_encoding=True)
-        pixels_emb = output.last_hidden_state[:, 0]  # cls token
+        cls_token = output.last_hidden_state[:, 0]  # (B*T, D)
+        patch_tokens = output.last_hidden_state[:, 1:]  # (B*T, N, D)
+
+        if self.patch_proj is None:
+            pixels_emb = cls_token
+        else:
+            n = patch_tokens.size(1)
+            patch_tokens = rearrange(patch_tokens, "(b t) n d -> (b t n) d", b=b)
+            patch_proj = rearrange(self.patch_proj(patch_tokens), "(b t n) d -> (b t) (n d)", b=b, n=n)
+
+            pixels_emb = torch.cat((cls_token, patch_proj), axis=-1)
+
         emb = self.projector(pixels_emb)
         emb = rearrange(emb, "(b t) d -> b t d", b=b)
         return emb

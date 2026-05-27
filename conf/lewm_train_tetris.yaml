@@ -72,7 +72,9 @@ wm:
   type: lewm
   history_size: 3
   num_preds: 1
+  hidden_dim: 192
   embed_dim: 192
+  # patch_project_dim: 2
 
 predictor:
   depth: 6
