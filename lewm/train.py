@@ -44,15 +44,20 @@ def _reset_parameters(m):
 
 
 class GridMaskProbeCallback(pl.Callback):
-    def __init__(self, cfg, run_dir):
-        self.cfg = cfg
+    def __init__(self, full_cfg, run_dir):
+        self.full_cfg = full_cfg
+        self.cfg = OmegaConf.select(full_cfg, "grid_mask_probe", default=OmegaConf.create({}))
         self.run_dir = run_dir
+        grid_cells = self.cfg.grid_width * self.cfg.grid_height
+        self.probe = build_grid_mask_probe(full_cfg.wm.embed_dim, grid_cells, self.cfg.model)
+        self.probe_opt = None
 
     def on_fit_start(self, trainer, pl_module):
-        pl_module.grid_mask_probe_opt = torch.optim.AdamW(
-            pl_module.grid_mask_probe.parameters(),
-            lr=self.cfg.grid_mask_probe.optimizer.lr,
-            weight_decay=self.cfg.grid_mask_probe.optimizer.weight_decay,
+        self.probe = self.probe.to(pl_module.device)
+        self.probe_opt = torch.optim.AdamW(
+            self.probe.parameters(),
+            lr=self.cfg.optimizer.lr,
+            weight_decay=self.cfg.optimizer.weight_decay,
         )
 
     def _probe_step(self, pl_module, outputs, batch, stage):
@@ -61,13 +66,13 @@ class GridMaskProbeCallback(pl.Callback):
         gmp_latents = rearrange(outputs["emb"].detach().float(), "b t d -> (b t) d")
         gmp_masks = rearrange(batch["tetris_grid_mask"].float().to(gmp_latents.device),
                               "b t w h -> (b t) (w h)")
-        gmp_logits = pl_module.grid_mask_probe(gmp_latents)
+        gmp_logits = self.probe(gmp_latents)
         gmp_loss = F.binary_cross_entropy_with_logits(gmp_logits, gmp_masks)
 
         if stage == "fit":
-            pl_module.grid_mask_probe_opt.zero_grad()
+            self.probe_opt.zero_grad()
             gmp_loss.backward()
-            pl_module.grid_mask_probe_opt.step()
+            self.probe_opt.step()
 
         with torch.no_grad():
             gmp_preds = gmp_logits.sigmoid() > 0.5
@@ -81,8 +86,8 @@ class GridMaskProbeCallback(pl.Callback):
         return gmp_masks, gmp_logits
 
     def _log_mask_preview(self, trainer, gmp_masks, gmp_logits, stage):
-        n = min(self.cfg.grid_mask_probe.preview_images, gmp_masks.size(0))
-        w, h = self.cfg.grid_mask_probe.grid_width, self.cfg.grid_mask_probe.grid_height
+        n = min(self.cfg.preview_images, gmp_masks.size(0))
+        w, h = self.cfg.grid_width, self.cfg.grid_height
         gt   = rearrange(gmp_masks[:n], "n (w h) -> n 1 h w", w=w, h=h)
         pred = rearrange((gmp_logits[:n].sigmoid() > 0.5).float(), "n (w h) -> n 1 h w", w=w, h=h)
         gt_imgs   = F.interpolate(gt,   scale_factor=10, mode="nearest")
@@ -104,18 +109,20 @@ class GridMaskProbeCallback(pl.Callback):
             self._log_mask_preview(trainer, *result, "validate")
 
     def on_train_epoch_end(self, trainer, pl_module):
-        interval = OmegaConf.select(self.cfg, "grid_mask_probe.checkpoint_interval")
+        interval = OmegaConf.select(self.cfg, "checkpoint_interval")
         if interval is None:
             return
         epoch = trainer.current_epoch
         if (epoch + 1) % interval == 0:
             path = self.run_dir / f"grid_mask_probe_epoch_{epoch:04d}.pt"
-            torch.save(pl_module.grid_mask_probe, path)
+            torch.save(self.probe, path)
 
     def on_train_epoch_start(self, trainer, pl_module):
-        interval = OmegaConf.select(self.cfg, "grid_mask_probe.reset_interval")
+        interval = OmegaConf.select(self.cfg, "reset_interval")
+        if interval is None:
+            return
         if trainer.current_epoch % interval == 0:
-            pl_module.grid_mask_probe.apply(_reset_parameters)
+            self.probe.apply(_reset_parameters)
 
 
 @ctl.contextmanager
@@ -365,11 +372,6 @@ def run(cfg):
         optim=optimizers,
     )
 
-    if OmegaConf.select(cfg, "grid_mask_probe.enabled", default=False):
-        grid_cells = cfg.grid_mask_probe.grid_width * cfg.grid_mask_probe.grid_height
-        world_model.grid_mask_probe = build_grid_mask_probe(
-            cfg.wm.embed_dim, grid_cells, cfg.grid_mask_probe.model
-        )
 
     ##########################
     ##       training       ##

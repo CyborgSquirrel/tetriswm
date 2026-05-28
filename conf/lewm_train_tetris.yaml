@@ -96,7 +96,7 @@ grid_mask_probe:
   grid_width: ${tetris.tetris.width}
   grid_height: ${tetris.tetris.height}
   checkpoint_interval: ${checkpoint_interval}
-  reset_interval: ${checkpoint_interval}  # reset probe weights every N epochs
+  reset_interval: null
   preview_images: 8
   model:
     type: linear
