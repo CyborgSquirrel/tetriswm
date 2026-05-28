@@ -43,6 +43,26 @@ def _reset_parameters(m):
         m.reset_parameters()
 
 
+class EMAMetricsSummaryCallback(pl.Callback):
+    def __init__(self, alpha=0.98):
+        self.alpha = alpha
+        self._ema: dict[str, float] = {}
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        ema_logs = {}
+        for k, v in trainer.callback_metrics.items():
+            if not k.startswith("fit/"):
+                continue
+            val = v.item() if hasattr(v, "item") else float(v)
+            if k not in self._ema:
+                self._ema[k] = val
+            else:
+                self._ema[k] = self.alpha * self._ema[k] + (1 - self.alpha) * val
+            ema_logs[f"ema/{k}"] = self._ema[k]
+        if ema_logs and trainer.logger and trainer.is_global_zero:
+            trainer.logger.experiment.summary.update(ema_logs)
+
+
 class GridMaskProbeCallback(pl.Callback):
     def __init__(self, full_cfg, run_dir):
         self.full_cfg = full_cfg
@@ -398,7 +418,7 @@ def run(cfg):
         epoch_interval=cfg.checkpoint_interval,
     )
 
-    callbacks = [object_dump_callback]
+    callbacks = [object_dump_callback, EMAMetricsSummaryCallback()]
     if OmegaConf.select(cfg, "grid_mask_probe.enabled", default=False):
         callbacks.append(GridMaskProbeCallback(cfg, run_dir))
 
