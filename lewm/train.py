@@ -377,10 +377,10 @@ def run(cfg):
     )
 
     optimizers = {
-        'model_opt': {
-            "modules": 'model',
+        "model_opt": {
+            "modules": "model",
             "optimizer": dict(cfg.optimizer),
-            "scheduler": {"type": "LinearWarmupCosineAnnealingLR"},
+            "scheduler": OmegaConf.select(cfg, "scheduler"),
             "interval": "epoch",
         },
     }
@@ -392,7 +392,6 @@ def run(cfg):
         forward=partial(lejepa_forward, cfg=cfg),
         optim=optimizers,
     )
-
 
     ##########################
     ##       training       ##
