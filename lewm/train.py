@@ -58,7 +58,7 @@ class EMAMetricsSummaryCallback(pl.Callback):
             if k not in self._ema:
                 self._ema[k] = val
             else:
-                self._ema[k] = self.alpha * self._ema[k] + self.alpha * val
+                self._ema[k] = self.alpha * self._ema[k] + (1 - self.alpha) * val
             ema_logs[f"ema/{k}"] = self._ema[k]
         if ema_logs and trainer.logger and trainer.is_global_zero:
             trainer.logger.experiment.summary.update(ema_logs)
@@ -380,7 +380,7 @@ def run(cfg):
         "model_opt": {
             "modules": "model",
             "optimizer": dict(cfg.optimizer),
-            "scheduler": OmegaConf.select(cfg, "scheduler"),
+            "scheduler": dict(cfg.scheduler),
             "interval": "epoch",
         },
     }
