@@ -181,8 +181,20 @@ def lejepa_forward(self, batch, stage, cfg):
 
     # LeWM loss
     output["pred_loss"] = (pred_emb - tgt_emb).pow(2).mean()
-    output["sigreg_loss"]= self.sigreg(emb.transpose(0, 1))
-    output["loss"] = output["pred_loss"] + lambd * output["sigreg_loss"]
+    if lambd > 0:
+        output["sigreg_loss"]= self.sigreg(emb.transpose(0, 1))
+    
+    output["loss"] = 0
+    output["loss"] += output["pred_loss"]
+    if lambd > 0:
+        output["loss"] += lambd * output["sigreg_loss"]
+
+    if OmegaConf.select(cfg, "track_collapse.enabled", default=False):
+        emb_flat = rearrange(output["emb"], "b t d -> (b t) d")
+        emb_flat_mean = reduce(emb_flat, "bt d -> 1 d", "mean")
+
+        logs[f"{stage}/emb_l2"] = (emb_flat ** 2).mean().detach()
+        logs[f"{stage}/mean_emb_l2"] = ((emb_flat - emb_flat_mean) ** 2).mean().detach()
 
     # Action ranking
     with torch.no_grad(), set_eval(self.model):
