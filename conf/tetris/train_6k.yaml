@@ -1,0 +1,15 @@
+# NOTE: Should come out to about the same amount of training data as tworoom.
+
+out: tetris_train_6k
+traj_num: 6000
+traj_len: 1000
+seed: 42
+remove_actions: []
+
+tetris:
+  width: 8
+  height: 12
+  render_size: 126
+  mino_generator:
+    _target_: tetris.tetris.BagGenerator
+    minoes: [I]
