@@ -127,6 +127,7 @@ def run(cfg):
         act_hist.append(action)
         act = rearrange(act_hist[-cfg.wm.history_size:], "t fs_d -> 1 t fs_d")
 
+        print("Emb", enc_emb_1)
         print("GT action", action)
 
         emb_0 = rearrange(list(emb_hist), "t 1 1 d -> 1 t d")

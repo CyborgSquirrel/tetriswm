@@ -61,6 +61,8 @@ optimizer:
 scheduler:
   type: LinearWarmupCosineAnnealingLR
 
+overfit: false
+
 wandb:
   enabled: True
   config:

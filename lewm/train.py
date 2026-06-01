@@ -388,6 +388,19 @@ def run(cfg):
         patch_proj=patch_proj,
     )
 
+    if cfg.get("overfit", False):
+        # disable dropout for overfitting
+        for module in world_model.modules():
+            if isinstance(
+                module,
+                ( torch.nn.Dropout
+                , torch.nn.Dropout1d
+                , torch.nn.Dropout2d
+                , torch.nn.Dropout3d
+                )
+            ):
+                module.p = 0
+
     optimizers = {
         "model_opt": {
             "modules": "model",
