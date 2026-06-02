@@ -326,18 +326,22 @@ def run(cfg):
     embed_dim = cfg.wm.embed_dim
     effective_act_dim = cfg.data.dataset.frameskip * cfg.wm.action_dim
 
-    patch_project_dim = OmegaConf.select(cfg, "wm.patch_project_dim", default=None)
     projector_input_dim = enc_hidden_dim
     patch_proj = None
-    if patch_project_dim is not None:
-        projector_input_dim += patch_project_dim * patch_num
-        patch_proj = nn.Linear(enc_hidden_dim, patch_project_dim)
-        # patch_proj = MLP(
-        #     input_dim=projector_input_dim,
-        #     output_dim=embed_dim,
-        #     hidden_dim=2048,
-        #     # norm_fn=torch.nn.BatchNorm1d,
-        # )
+    if OmegaConf.select(cfg, "wm.patch_projector.enabled", default=False):
+        projector_input_dim += cfg.wm.patch_projector.dim * patch_num
+        match cfg.wm.patch_projector.type:
+            case "linear":
+                patch_proj = nn.Linear(enc_hidden_dim, cfg.wm.patch_projector.dim)
+            case "mlp":
+                patch_proj = MLP(
+                    input_dim=enc_hidden_dim,
+                    output_dim=cfg.wm.patch_projector.dim,
+                    hidden_dim=cfg.wm.patch_projector.hidden_dim,
+                    # norm_fn=torch.nn.BatchNorm1d,
+                )
+            case _:
+                raise RuntimeError(f"Unexpected {cfg.wm.patch_projector.type=}")
 
     predictor = ARPredictor(
         num_frames=cfg.wm.history_size,
