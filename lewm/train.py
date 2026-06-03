@@ -43,6 +43,15 @@ def _reset_parameters(m):
         m.reset_parameters()
 
 
+class LearningRateMonitor(pl.pytorch.callbacks.LearningRateMonitor):
+    def _extract_lr(self, param_group, name):
+        lr = super()._extract_lr(param_group, name)
+        if len(lr) != 1:
+            raise RuntimeError()
+        lr = {f"{key}-lr": value for key, value in lr.items()}
+        return lr
+
+
 class EMAMetricsSummaryCallback(pl.Callback):
     def __init__(self, alpha=0.95):
         self.alpha = alpha
@@ -97,11 +106,17 @@ class GridMaskProbeCallback(pl.Callback):
 
         with torch.no_grad():
             gmp_preds = gmp_logits.sigmoid() > 0.5
-            gmp_acc = (gmp_preds == gmp_masks.bool()).float().mean()
+            gmp_masks_bool = gmp_masks.bool()
+            gmp_acc = (gmp_preds == gmp_masks_bool).float().mean()
+            tp = (gmp_preds & gmp_masks_bool).float().sum()
+            fp = (gmp_preds & ~gmp_masks_bool).float().sum()
+            fn = (~gmp_preds & gmp_masks_bool).float().sum()
+            gmp_f1 = tp / (tp + 0.5 * (fp + fn) + 1e-8)
 
         pl_module.log_dict({
             f"probe/{stage}/bce_loss": gmp_loss.detach(),
             f"probe/{stage}/pixel_acc": gmp_acc,
+            f"probe/{stage}/f1": gmp_f1,
         }, on_step=True, sync_dist=True)
 
         return gmp_masks, gmp_logits
@@ -447,7 +462,11 @@ def run(cfg):
         epoch_interval=cfg.checkpoint_interval,
     )
 
-    callbacks = [object_dump_callback, EMAMetricsSummaryCallback()]
+    callbacks = [
+        object_dump_callback,
+        EMAMetricsSummaryCallback(),
+        LearningRateMonitor(logging_interval="step"),
+    ]
     if OmegaConf.select(cfg, "grid_mask_probe.enabled", default=False):
         callbacks.append(GridMaskProbeCallback(cfg, run_dir))
 

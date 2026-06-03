@@ -81,9 +81,9 @@ wm:
   embed_dim: 192
   patch_projector:
     enabled: false
-    type: linear # or mlp
-    dim: 4
-    hidden_dim: null
+    # type: linear # or mlp
+    # dim: 4
+    # hidden_dim: null
 
 predictor:
   depth: 6
