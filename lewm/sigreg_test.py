@@ -12,6 +12,7 @@ def main(cfg: DictConfig):
     torch.autograd.set_detect_anomaly(cfg.detect_anomaly)
     if cfg.seed is not None:
         torch.manual_seed(cfg.seed)
+    torch.use_deterministic_algorithms(cfg.deterministic)
     device = torch.device(cfg.device)
     v = torch.randn((cfg.t, cfg.b, cfg.d), requires_grad=True, device=device)
     sigreg = SIGReg(wrap_x_t=True).to(device)
