@@ -10,6 +10,8 @@ from tqdm import tqdm
 @hydra.main(version_base=None, config_path="../conf", config_name="sigreg_test")
 def main(cfg: DictConfig):
     torch.autograd.set_detect_anomaly(cfg.detect_anomaly)
+    if cfg.seed is not None:
+        torch.manual_seed(cfg.seed)
     device = torch.device(cfg.device)
     v = torch.randn((cfg.t, cfg.b, cfg.d), requires_grad=True, device=device)
     sigreg = SIGReg(wrap_x_t=True).to(device)
