@@ -38,7 +38,8 @@ def main(cfg: DictConfig):
 
         if cfg.wandb.enabled:
             lr = opt.param_groups[0]["lr"]
-            wandb.log({"loss": loss.item(), "lr": lr}, step=step)
+            norms = v.detach().norm(dim=-1).cpu().flatten().numpy()
+            wandb.log({"loss": loss.item(), "lr": lr, "norm_hist": wandb.Histogram(norms)}, step=step)
 
     if cfg.wandb.enabled:
         wandb.finish()
