@@ -1,0 +1,17 @@
+epochs: 10000
+device: cpu
+t: 3
+b: 64
+d: 1
+
+optimizer:
+  _target_: torch.optim.Adam
+  lr: 5.0e-5
+
+scheduler: null
+
+wandb:
+  enabled: false
+  project: genai-tetris
+  entity: andrei-jardan-technical-university-of-munich
+  name: sigreg_test
