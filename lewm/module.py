@@ -10,7 +10,7 @@ def modulate(x, shift, scale):
 class SIGReg(torch.nn.Module):
     """Sketch Isotropic Gaussian Regularizer (single-GPU!)"""
 
-    def __init__(self, knots=17, num_proj=1024):
+    def __init__(self, knots=17, num_proj=1024, *, wrap_x_t=False):
         super().__init__()
         self.num_proj = num_proj
         t = torch.linspace(0, 3, knots, dtype=torch.float32)
@@ -21,6 +21,7 @@ class SIGReg(torch.nn.Module):
         self.register_buffer("t", t)
         self.register_buffer("phi", window)
         self.register_buffer("weights", weights * window)
+        self.wrap_x_t = wrap_x_t
 
     def forward(self, proj):
         """
@@ -31,6 +32,8 @@ class SIGReg(torch.nn.Module):
         A = A.div_(A.norm(p=2, dim=0))
         # compute the epps-pulley statistic
         x_t = (proj @ A).unsqueeze(-1) * self.t
+        if self.wrap_x_t:
+            x_t = x_t.remainder(2 * torch.pi)
         err = (x_t.cos().mean(-3) - self.phi).square() + x_t.sin().mean(-3).square()
         statistic = (err @ self.weights) * proj.size(-2)
         return statistic.mean() # average over projections and time
