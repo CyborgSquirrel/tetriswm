@@ -22,7 +22,7 @@ from omegaconf import open_dict
 import h5py
 import hydra
 import torch
-from einops import rearrange, pack
+from einops import rearrange, pack, reduce
 
 # sys.path.insert(0, str(Path(__file__).parent))
 
@@ -72,10 +72,11 @@ def run(cfg):
     sys.stdout = Tee(sys.stdout, lf)
     sys.stderr = Tee(sys.stderr, lf)
 
-    print("Saving results to {cfg.subdir}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    print(f"Device       : {device}")
+    print(f"Dest dir     : {cfg.subdir}")
     print(f"Checkpoint   : {cfg.eval.checkpoint}")
     print(f"Dataset      : {cfg.eval.dataset_path}")
     print(f"Episode idx  : {cfg.eval.episode_idx}")
@@ -127,9 +128,10 @@ def run(cfg):
         act_hist.append(action)
         act = rearrange(act_hist[-cfg.wm.history_size:], "t fs_d -> 1 t fs_d")
 
-        print("Emb", enc_emb_1)
+        # print("Emb", enc_emb_1)
         print("GT action", action)
 
+        pred_emb_1_all= []
         emb_0 = rearrange(list(emb_hist), "t 1 1 d -> 1 t d")
         with agg.min(key=lambda a: a[0]) as best:
             for last_act in actions_dict.values():
@@ -138,17 +140,24 @@ def run(cfg):
                 act_mod_emb = model.action_encoder(model.action_trans(act_mod))
 
                 pred_emb_1 = model.predict(emb_0, act_mod_emb)[:, (-1,), :]
+                pred_emb_1_all.append(pred_emb_1)
                 l2 = torch.mean((enc_emb_1 - pred_emb_1) ** 2).item()
                 best.update((l2, pred_emb_1, last_act))
 
-                print(f"  Probe action ({l2:.5f})", last_act)
+                print(f"  Probe action ({l2:.10f})", last_act)
 
         best_l2 = best.result[0]
         best_emb = best.result[1]
         best_action = best.result[2]
         act_match = torch.all(torch.isclose(action, best_action)).item()
 
-        print(f"Best action ({best_l2:.5f}), {act_match=}", best_action)
+        print(f"Best action ({best_l2:.10f}), {act_match=}", best_action)
+
+        pred_emb_1_all = torch.stack(pred_emb_1_all)
+        pred_emb_1_all = pred_emb_1_all[~reduce(torch.isnan(pred_emb_1_all), "n 1 1 d -> n", "any")]
+        pred_emb_1_mean = reduce(pred_emb_1_all, "n 1 1 d -> 1 1 1 d", "mean")
+        pred_emb_1_mean_l2 = reduce((pred_emb_1_all - pred_emb_1_mean)**2, "n 1 1 d -> 1", "mean").item()
+        print(f"Mean L2 {pred_emb_1_mean_l2}")
 
         emb_hist.append(best_emb)
         act_hist[-1] = best_action

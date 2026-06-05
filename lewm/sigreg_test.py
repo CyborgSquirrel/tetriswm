@@ -15,7 +15,7 @@ def main(cfg: DictConfig):
     torch.use_deterministic_algorithms(cfg.deterministic)
     device = torch.device(cfg.device)
     v = torch.randn((cfg.t, cfg.b, cfg.d), requires_grad=True, device=device)
-    sigreg = SIGReg(wrap_x_t=True).to(device)
+    sigreg = SIGReg().to(device)
 
     opt = hydra.utils.instantiate(cfg.optimizer, params=[v])
 
