@@ -222,7 +222,7 @@ def lejepa_forward(self, batch, stage, cfg):
             ar_ctx_act_base = batch["action"][:,:ctx_len]  # (B, T, D_act*frameskip)
 
             ar_pred_embs = []  # list of (B, n_preds, D_ctx_emb)
-            ar_pred_embs.append(pred_emb)
+            ar_pred_embs.append(self.model.predict(ctx_emb, ctx_act))
             for ar_final_act in ar_acts:
                 ar_ctx_act = ar_ctx_act_base.clone()
                 ar_ctx_act[:, -1, -cfg.wm.action_dim:] = ar_final_act
@@ -449,7 +449,7 @@ def run(cfg):
         wandb.finish()
         logger = WandbLogger(**cfg.wandb.config)
         logger.log_hyperparams({
-            "res": OmegaConf.to_container(cfg, resolve=True),
+            **OmegaConf.to_container(cfg, resolve=True),
             "raw": OmegaConf.to_container(cfg, resolve=False),
         })
 
