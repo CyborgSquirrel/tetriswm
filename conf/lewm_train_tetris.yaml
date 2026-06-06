@@ -82,6 +82,7 @@ wm:
   patch_projector:
     enabled: false
     # type: linear # or mlp
+    # weights: shared # or indep
     # dim: 4
     # hidden_dim: null
 

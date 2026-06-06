@@ -47,9 +47,9 @@ class JEPA(nn.Module):
             pixels_emb = cls_token
         else:
             n = patch_tokens.size(1)
-            patch_tokens = rearrange(patch_tokens, "(b t) n d -> (b t n) d", b=b)
-            patch_proj = rearrange(self.patch_proj(patch_tokens), "(b t n) d -> (b t) (n d)", b=b, n=n)
-
+            patch_proj = self.patch_proj(patch_tokens)
+            # patch_tokens = rearrange(patch_tokens, "(b t) n d -> (b t n) d", b=b)
+            # patch_proj = rearrange(self.patch_proj(patch_tokens), "(b t n) d -> (b t) (n d)", b=b, n=n)
             pixels_emb = torch.cat((cls_token, patch_proj), axis=-1)
 
         emb = self.projector(pixels_emb)

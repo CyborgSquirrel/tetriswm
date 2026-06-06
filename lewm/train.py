@@ -19,6 +19,7 @@ from jepa import JEPA
 from module import ARPredictor, Embedder, MLP, SIGReg, Normalizer, NanToNum, RearrangeWrap
 from utils import get_column_normalizer, get_img_preprocessor, ModelObjectCallBack, torch_printoptions
 from einops import repeat, rearrange, reduce
+from einops.layers.torch import EinMix, Rearrange
 import contextlib as ctl
 
 
@@ -347,8 +348,38 @@ def run(cfg):
         projector_input_dim += cfg.wm.patch_projector.dim * patch_num
         match cfg.wm.patch_projector.type:
             case "linear":
-                patch_proj = nn.Linear(enc_hidden_dim, cfg.wm.patch_projector.dim)
+                match cfg.wm.patch_projector.weights:
+                    case "indep":
+                        patch_proj = nn.Sequential(
+                            EinMix(
+                                "bt n d_in -> bt n d_out",
+                                weight_shape="n d_in d_out",
+                                bias_shape="n d_out",
+                                n=patch_num,
+                                d_in=enc_hidden_dim,
+                                d_out=cfg.wm.patch_projector.dim,
+                            ),
+                            Rearrange("bt n d_out -> bt (n d_out)"),
+                        )
+                    case "shared":
+                        patch_proj = RearrangeWrap(
+                            nn.Linear(enc_hidden_dim, cfg.wm.patch_projector.dim),
+                            pattern_in="bt n d_in -> (bt n) d_in",
+                            pattern_out="(bt n) d_out -> bt (n d_out)",
+                            capture="bt _ _",
+                        )
+                    case _:
+                        raise RuntimeError(f"Unexpected {cfg.wm.patch_projector.weights=}")
             case "mlp":
+                # TODO: fix this up
+                raise NotImplemented()
+                match cfg.wm.patch_projector.weights:
+                    case "indep":
+                        raise RuntimeError(f"Unsupported {cfg.wm.patch_projector.weights=}")
+                    case "shared":
+                        pass
+                    case _:
+                        raise RuntimeError(f"Unexpected {cfg.wm.patch_projector.weights=}")
                 patch_proj = MLP(
                     input_dim=enc_hidden_dim,
                     output_dim=cfg.wm.patch_projector.dim,
@@ -436,6 +467,9 @@ def run(cfg):
         forward=partial(lejepa_forward, cfg=cfg),
         optim=optimizers,
     )
+
+    with open_dict(cfg):
+        cfg["num_params"] = sum(p.numel() for p in world_model.parameters(0))
 
     ##########################
     ##       training       ##
