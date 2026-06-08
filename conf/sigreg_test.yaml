@@ -1,11 +1,22 @@
-epochs: 10000
-seed: 41
 deterministic: false
 detect_anomaly: false
+
+histogram_enabled: false
+
 device: cpu
-t: 3
-b: 64
-d: 1
+
+epochs: 10000
+
+data:
+  seed: 41
+  hist: 3
+  len: 256
+  dim: 1
+
+loader:
+  batch_size: 64
+  shuffle: true
+  drop_last: false
 
 optimizer:
   _target_: torch.optim.Adam
@@ -17,4 +28,4 @@ wandb:
   enabled: false
   project: genai-tetris
   entity: andrei-jardan-technical-university-of-munich
-  name: sigreg_test
+  name: st_b${loader.batch_size}_d${data.dim}_s${data.seed}
