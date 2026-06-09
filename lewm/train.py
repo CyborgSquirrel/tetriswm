@@ -199,9 +199,30 @@ def lejepa_forward(self, batch, stage, cfg):
     output["pred_loss"] = (pred_emb - tgt_emb).pow(2).mean()
     if lambd > 0:
         output["sigreg_loss"]= self.sigreg(emb.transpose(0, 1))
-    
+
+    # Loss balancing
+    pred_loss_mul = 1
+    if OmegaConf.select(cfg, "loss_balancing.enabled", default=False):
+        alpha = cfg.loss_balancing.alpha
+        mul = cfg.loss_balancing.mul
+
+        pred_loss_val = output["pred_loss"].detach()
+        if not hasattr(self, "_ema_pred_loss"):
+            self._ema_pred_loss = pred_loss_val
+        else:
+            self._ema_pred_loss = alpha * self._ema_pred_loss + (1 - alpha) * pred_loss_val
+
+        if lambd > 0:
+            sigreg_loss_val = output["sigreg_loss"].detach()
+            if not hasattr(self, "_ema_sigreg_loss"):
+                self._ema_sigreg_loss = sigreg_loss_val
+            else:
+                self._ema_sigreg_loss = alpha * self._ema_sigreg_loss + (1 - alpha) * sigreg_loss_val
+
+            pred_loss_mul = ((self._ema_sigreg_loss * lambd) / (self._ema_pred_loss + 1e-8)) * mul
+
     output["loss"] = 0
-    output["loss"] += output["pred_loss"]
+    output["loss"] += pred_loss_mul * output["pred_loss"]
     if lambd > 0:
         output["loss"] += lambd * output["sigreg_loss"]
 

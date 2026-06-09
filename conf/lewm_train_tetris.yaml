@@ -63,6 +63,11 @@ scheduler:
 
 overfit: false
 
+loss_balancing:
+  enabled: false
+  alpha: 0.95
+  mul: 1
+
 wandb:
   enabled: True
   config:
