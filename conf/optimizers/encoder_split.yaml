@@ -1,0 +1,22 @@
+encoder_opt:
+  modules: "model\\.encoder"
+  optimizer:
+    type: AdamW
+    lr: 5e-5
+    weight_decay: 1e-3
+  scheduler:
+    type: LinearWarmupCosineAnnealingLR
+    warmup_steps: ${eval:'max(1, ${trainer.max_epochs} // 100)'}
+    max_steps: ${eval:'${trainer.max_epochs} // 2'}
+    eta_min: 0.0
+  interval: epoch
+
+model_opt:
+  modules: "model"
+  optimizer:
+    type: AdamW
+    lr: 5e-5
+    weight_decay: 1e-3
+  scheduler:
+    type: LinearWarmupCosineAnnealingLR
+  interval: epoch

@@ -159,7 +159,17 @@ class GridMaskProbeCallback(pl.Callback):
         if interval is None:
             return
         if trainer.current_epoch % interval == 0:
-            self.probe.apply(_reset_parameters)
+            self.probe_module.probe.apply(_reset_parameters)
+
+
+class ClampSchedulerCallback(pl.Callback):
+    def on_train_epoch_start(self, trainer, pl_module):
+        for config in trainer.lr_scheduler_configs:
+            sched = config.scheduler
+            if hasattr(sched, "max_steps") and sched.last_epoch >= sched.max_steps:
+                eta_min = getattr(sched, "eta_min", 0.0)
+                for pg in sched.optimizer.param_groups:
+                    pg["lr"] = eta_min
 
 
 @ctl.contextmanager
@@ -221,6 +231,7 @@ def lejepa_forward(self, batch, stage, cfg):
 
             pred_loss_mul = ((self._ema_sigreg_loss * lambd) / (self._ema_pred_loss + 1e-8)) * mul
 
+    # Total loss
     output["loss"] = 0
     output["loss"] += pred_loss_mul * output["pred_loss"]
     if lambd > 0:
@@ -472,21 +483,12 @@ def run(cfg):
             ):
                 module.p = 0
 
-    optimizers = {
-        "model_opt": {
-            "modules": "model",
-            "optimizer": dict(cfg.optimizer),
-            "scheduler": dict(cfg.scheduler),
-            "interval": "epoch",
-        },
-    }
-
     data_module = spt.data.DataModule(train=train, val=val)
     world_model = spt.Module(
         model = world_model,
         sigreg = SIGReg(**cfg.loss.sigreg.kwargs),
         forward=partial(lejepa_forward, cfg=cfg),
-        optim=optimizers,
+        optim=OmegaConf.to_container(cfg.optimizers, resolve=True),
     )
 
     with open_dict(cfg):
@@ -521,6 +523,7 @@ def run(cfg):
         object_dump_callback,
         EMAMetricsSummaryCallback(),
         LearningRateMonitor(logging_interval="step"),
+        ClampSchedulerCallback(),
     ]
     if OmegaConf.select(cfg, "grid_mask_probe.enabled", default=False):
         callbacks.append(GridMaskProbeCallback(cfg, run_dir))

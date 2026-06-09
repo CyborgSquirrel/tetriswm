@@ -2,6 +2,7 @@ defaults:
   - _self_
   - data: pusht
   - action_rank: ???
+  - optimizers: default
 
 output_model_name: lewm
 checkpoint_interval: 1
@@ -39,11 +40,6 @@ loader:
   persistent_workers: True
   prefetch_factor: 3
   pin_memory: True
-
-optimizer:
-  type: AdamW
-  lr: 5e-5
-  weight_decay: 1e-3
 
 wandb:
   enabled: True

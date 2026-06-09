@@ -3,6 +3,7 @@ defaults:
   # - data: tetris
   - tetris: ???
   - action_rank: tetris
+  - optimizers: default
 
 data:
   dataset:
@@ -52,14 +53,6 @@ loader:
   persistent_workers: True
   prefetch_factor: 3
   pin_memory: True
-
-optimizer:
-  type: AdamW
-  lr: 5e-5
-  weight_decay: 1e-3
-
-scheduler:
-  type: LinearWarmupCosineAnnealingLR
 
 overfit: false
 
