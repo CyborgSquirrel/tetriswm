@@ -1,4 +1,5 @@
 import os
+import math
 from functools import partial
 from pathlib import Path
 
@@ -170,6 +171,10 @@ class ClampSchedulerCallback(pl.Callback):
                 eta_min = getattr(sched, "eta_min", 0.0)
                 for pg in sched.optimizer.param_groups:
                     pg["lr"] = eta_min
+                    # TODO: Maybe also reenable if not zero???
+                    if math.isclose(eta_min, 0.0):
+                        for p in pg["params"]:
+                            p.requires_grad_(False)
 
 
 @ctl.contextmanager
