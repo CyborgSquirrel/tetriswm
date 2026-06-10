@@ -183,7 +183,7 @@ class Minoes(enum.Enum):
 
 class Action(enum.IntEnum):
     # NOTE: enum.auto() starts from 1
-    NOTHING      = enum.auto()
+    # NOTHING      = enum.auto()
     MOVE_LEFT    = enum.auto()
     MOVE_RIGHT   = enum.auto()
     MOVE_DOWN    = enum.auto()
@@ -299,8 +299,8 @@ class GtDynamics:
 
         # Handle action
         match action:
-            case Action.NOTHING:
-                pass
+            # case Action.NOTHING:
+            #     pass
             case Action.ROTATE_LEFT:
                 self._rotate_mino(MinoRotation.LEFT)
             case Action.ROTATE_RIGHT:

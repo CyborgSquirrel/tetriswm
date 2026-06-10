@@ -15,7 +15,7 @@ KEY_ACTION: dict[int, Action] = {
     pygame.K_SPACE:  Action.HARD_DROP,
     pygame.K_z:      Action.ROTATE_LEFT,
     pygame.K_x:      Action.ROTATE_RIGHT,
-    pygame.K_RETURN: Action.NOTHING,
+    # pygame.K_RETURN: Action.NOTHING,
 }
 
 

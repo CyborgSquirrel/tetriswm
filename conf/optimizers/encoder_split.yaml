@@ -6,7 +6,7 @@ encoder_opt:
     weight_decay: 1e-3
   scheduler:
     type: LinearWarmupCosineAnnealingLR
-    warmup_steps: ${eval:'max(1, ${trainer.max_epochs} // 100)'}
+    warmup_steps: ${eval:'max(1, ${.max_steps} // 100)'}
     max_steps: ${eval:'${trainer.max_epochs} // 2'}
     eta_min: 0.0
   interval: epoch
