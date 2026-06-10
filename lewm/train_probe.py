@@ -138,77 +138,105 @@ def load_world_model(path):
 
 
 class ProbeModule(pl.LightningModule):
-    def __init__(self, probe, cfg):
+    def __init__(self, probe, probe_cfg):
         super().__init__()
         self.probe = probe
         self.model = probe
-        self.cfg = cfg
-        self.save_hyperparameters(
-            {"cfg": OmegaConf.to_container(cfg, resolve=True)}
-        )
+        self.probe_cfg = probe_cfg
+        # self.save_hyperparameters(OmegaConf.to_container(probe_cfg, resolve=True))
 
-    def _step(self, batch, stage):
-        latents, targets = batch  # (N, D), (N, W*H)
-
+    def _compute(self, latents, masks):
+        """Pure computation: returns (loss, metrics_dict, logits) without logging."""
         logits = self.probe(latents)
-        loss = F.binary_cross_entropy_with_logits(logits, targets)
-
+        loss = F.binary_cross_entropy_with_logits(logits, masks)
         with torch.no_grad():
             preds = logits.sigmoid() > 0.5
-            acc = (preds == targets.bool()).float().mean()
+            masks_bool = masks.bool()
+            acc = (preds == masks_bool).float().mean()
+            tp = (preds & masks_bool).float().sum()
+            fp = (preds & ~masks_bool).float().sum()
+            fn = (~preds & masks_bool).float().sum()
+            f1 = tp / (tp + 0.5 * (fp + fn) + 1e-8)
+        return loss, {"bce_loss": loss.detach(), "pixel_acc": acc, "f1": f1}, logits
 
-        self.log(f"{stage}/bce_loss", loss, on_step=True, on_epoch=True, sync_dist=True)
-        self.log(f"{stage}/pixel_acc", acc, on_step=True, on_epoch=True, sync_dist=True)
+    def _step(self, batch, stage):
+        latents, masks = batch  # (N, D), (N, W*H)
+        loss, metrics, _ = self._compute(latents, masks)
+        self.log_dict({f"{stage}/{k}": v for k, v in metrics.items()}, on_step=True, on_epoch=True, sync_dist=True)
         return loss
 
     def training_step(self, batch, batch_idx):
         loss = self._step(batch, "train")
-        interval = self.cfg.probe.train_preview_interval
+        interval = self.probe_cfg.get("train_preview_interval")
         if interval is not None and batch_idx % interval == 0 and self.trainer.is_global_zero and self.logger:
-            self._log_mask_preview(batch)
+            latents, masks = batch
+            with torch.no_grad():
+                _, _, logits = self._compute(latents, masks)
+            self._log_mask_preview(self.logger, masks, logits)
         return loss
 
     def validation_step(self, batch, batch_idx):
         loss = self._step(batch, "val")
         if batch_idx == 0 and self.trainer.is_global_zero and self.logger:
-            self._log_mask_preview(batch)
+            latents, masks = batch
+            with torch.no_grad():
+                _, _, logits = self._compute(latents, masks)
+            self._log_mask_preview(self.logger, masks, logits, key="val/probe/masks")
         return loss
 
-    def _log_mask_preview(self, batch):
-        latents, masks = batch  # (N, D), (N, W*H)
-        n = min(self.cfg.probe.preview_images, latents.size(0))
-        w, h = self.cfg.probe.grid_width, self.cfg.probe.grid_height
-
-        with torch.no_grad():
-            logits = self.probe(latents)
-
-        gt = masks[:n].reshape(n, 1, w, h).permute(0, 1, 3, 2)
-        pred = (logits[:n].sigmoid() > 0.5).float().reshape(n, 1, w, h).permute(0, 1, 3, 2)
-
-        gt_imgs = F.interpolate(gt, scale_factor=10, mode="nearest")
+    def _log_mask_preview(self, logger, masks, logits, key="probe/masks"):
+        n = min(self.probe_cfg.preview_images, masks.size(0))
+        w, h = self.probe_cfg.grid_width, self.probe_cfg.grid_height
+        gt   = rearrange(masks[:n], "n (w h) -> n 1 h w", w=w, h=h)
+        pred = rearrange((logits[:n].sigmoid() > 0.5).float(), "n (w h) -> n 1 h w", w=w, h=h)
+        gt_imgs   = F.interpolate(gt,   scale_factor=10, mode="nearest")
         pred_imgs = F.interpolate(pred, scale_factor=10, mode="nearest")
-
-        self.logger.log_image(
-            key="probe/masks",
+        logger.log_image(
+            key=key,
             images=[*gt_imgs, *pred_imgs],
             caption=[f"gt_{i}" for i in range(n)] + [f"pred_{i}" for i in range(n)],
         )
 
-    def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
+    def setup_optimizer(self):
+        self._optimizer = torch.optim.AdamW(
             self.probe.parameters(),
-            lr=self.cfg.optimizer.lr,
-            weight_decay=self.cfg.optimizer.weight_decay,
+            lr=self.probe_cfg.optimizer.lr,
+            weight_decay=self.probe_cfg.optimizer.weight_decay,
         )
-        sched_cfg = self.cfg.get("scheduler", {})
-        if not sched_cfg or not sched_cfg.get("enabled", False):
-            return optimizer
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer,
-            T_max=self.trainer.max_epochs,
-            eta_min=sched_cfg.eta_min,
+
+    def train_on(self, latents, masks):
+        loss, metrics, logits = self._compute(latents, masks)
+        self._optimizer.zero_grad()
+        loss.backward()
+        self._optimizer.step()
+        return metrics, logits
+
+    def eval_on(self, latents, masks):
+        with torch.no_grad():
+            _, metrics, logits = self._compute(latents, masks)
+        return metrics, logits
+
+    def configure_optimizers(self):
+        ret = {}
+
+        ret["optimizer"] = torch.optim.AdamW(
+            self.probe.parameters(),
+            lr=self.probe_cfg.optimizer.lr,
+            weight_decay=self.probe_cfg.optimizer.weight_decay,
         )
-        return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "epoch"}}
+
+        sched_cfg = self.probe_cfg.get("scheduler", {})
+        if sched_cfg.get("enabled", False):
+            ret["lr_scheduler"] = {
+                "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR(
+                    ret["optimizer"],
+                    T_max=self.trainer.max_epochs,
+                    eta_min=sched_cfg.eta_min,
+                ),
+                "interval": "epoch",
+            }
+
+        return ret
 
 
 def build_probe(latent_dim, out_dim, model_cfg):
@@ -252,7 +280,7 @@ def run(cfg):
         logger = WandbLogger(**cfg.wandb.config)
         logger.log_hyperparams(OmegaConf.to_container(cfg))
 
-    module = ProbeModule(probe=probe, cfg=cfg)
+    module = ProbeModule(probe=probe, probe_cfg=cfg.probe)
     object_dump_callback = ModelObjectCallBack(
         dirpath=run_dir, filename=cfg.output_model_name, epoch_interval=1,
     )
