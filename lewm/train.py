@@ -313,6 +313,9 @@ def run(cfg):
     )
     val = torch.utils.data.DataLoader(val_set, **cfg.loader, shuffle=False, drop_last=False)
 
+    with open_dict(cfg):
+        cfg["total_steps"] = len(train) * cfg.trainer.max_epochs
+
     ##############################
     ##       model / optim      ##
     ##############################

@@ -7,9 +7,9 @@ encoder_opt:
   scheduler:
     type: LinearWarmupCosineAnnealingLR
     warmup_steps: ${eval:'max(1, ${.max_steps} // 100)'}
-    max_steps: ${eval:'${trainer.max_epochs} // 2'}
+    max_steps: ${eval:'${total_steps} // 2'}
     eta_min: 0.0
-  interval: epoch
+  # interval: epoch
 
 model_opt:
   modules: "model"
@@ -19,4 +19,4 @@ model_opt:
     weight_decay: 1e-3
   scheduler:
     type: LinearWarmupCosineAnnealingLR
-  interval: epoch
+  # interval: epoch
