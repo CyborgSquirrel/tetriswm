@@ -66,39 +66,40 @@ class GridMaskProbeCallback(pl.Callback):
         probe_cfg = OmegaConf.select(full_cfg, "grid_mask_probe", default=OmegaConf.create({}))
         grid_cells = probe_cfg.grid_width * probe_cfg.grid_height
         probe_net = build_probe(full_cfg.wm.embed_dim, grid_cells, probe_cfg.model)
-        self.probe_module = ProbeModule(probe=probe_net, probe_cfg=probe_cfg)
+        self.probe_module = ProbeModule(
+            probe=probe_net,
+            cfg=probe_cfg,
+            prefix="probe/",
+            manual=True,
+        )
 
     def on_fit_start(self, trainer, pl_module):
         self.probe_module = self.probe_module.to(pl_module.device)
         self.probe_module.setup_optimizer()
 
-    def _probe_step(self, pl_module, outputs, batch, stage):
-        if "tetris_grid_mask" not in batch:
-            return None
-        latents = rearrange(outputs["emb"].detach().float(), "b t d -> (b t) d")
-        masks   = rearrange(batch["tetris_grid_mask"].float().to(latents.device), "b t w h -> (b t) (w h)")
-        if stage == "fit":
-            metrics, logits = self.probe_module.train_on(latents, masks)
-        else:
-            metrics, logits = self.probe_module.eval_on(latents, masks)
-        pl_module.log_dict({f"probe/{stage}/{k}": v for k, v in metrics.items()}, on_step=True, sync_dist=True)
-        return masks, logits
-
-    def _log_mask_preview(self, trainer, masks, logits, stage):
-        self.probe_module._log_mask_preview(trainer.logger, masks, logits, key=f"probe/{stage}/masks")
+        # welcome to hacks
+        self.probe_module.log_dict = lambda *args, **kwargs: pl_module.log_dict(*args, **kwargs)
+        self.probe_module.trainer = trainer
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        result = self._probe_step(pl_module, outputs, batch, "fit")
-        if batch_idx == 0 and trainer.is_global_zero and trainer.logger and result is not None:
-            self._log_mask_preview(trainer, *result, "fit")
+        probe_batch = (
+            rearrange(outputs["emb"].detach().float(), "b t ... -> (b t) ..."),
+            rearrange(batch["tetris_grid_mask"].float(), "b t ... -> (b t) ..."),
+        )
+        self.probe_module._optimizer.zero_grad()
+        loss = self.probe_module.training_step(probe_batch, batch_idx)
+        loss.backward()
+        self.probe_module._optimizer.step()
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        result = self._probe_step(pl_module, outputs, batch, "validate")
-        if batch_idx == 0 and trainer.is_global_zero and trainer.logger and result is not None:
-            self._log_mask_preview(trainer, *result, "validate")
+        probe_batch = (
+            rearrange(outputs["emb"].detach().float(), "b t ... -> (b t) ..."),
+            rearrange(batch["tetris_grid_mask"].float(), "b t ... -> (b t) ..."),
+        )
+        self.probe_module.validation_step(probe_batch, batch_idx)
 
     def on_train_epoch_end(self, trainer, pl_module):
-        interval = OmegaConf.select(self.probe_module.probe_cfg, "checkpoint_interval")
+        interval = OmegaConf.select(self.probe_module.cfg, "checkpoint_interval")
         if interval is None:
             return
         epoch = trainer.current_epoch
@@ -107,7 +108,7 @@ class GridMaskProbeCallback(pl.Callback):
             torch.save(self.probe_module.probe, path)
 
     def on_train_epoch_start(self, trainer, pl_module):
-        interval = OmegaConf.select(self.probe_module.probe_cfg, "reset_interval")
+        interval = OmegaConf.select(self.probe_module.cfg, "reset_interval")
         if interval is None:
             return
         if trainer.current_epoch % interval == 0:
