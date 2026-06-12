@@ -27,7 +27,7 @@ world_model_path: ???
 seed: 3072
 img_size: ${tetris.tetris.render_size}
 num_workers: 6
-checkpoint_interval: ${eval:'${trainer.max_epochs} // 10'}
+checkpoint_interval: ${eval:'max(1, ${trainer.max_epochs} // 10)'}
 
 trainer:
   default_root_dir: outputs
