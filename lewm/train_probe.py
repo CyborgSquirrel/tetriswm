@@ -34,6 +34,7 @@ def build_dataloaders(cfg):
     rnd_gen = torch.Generator().manual_seed(cfg.seed)
     train_set, val_set = split_dataset(cfg.train_split, dataset, rnd_gen=rnd_gen)
 
+    loader_cfg = OmegaConf.to_container(cfg.wm_loader, resolve=True)
     train = torch.utils.data.DataLoader(
         train_set, **cfg.wm_loader,
         shuffle=True, drop_last=True, generator=rnd_gen,
@@ -97,12 +98,13 @@ def build_cached_dataloaders(world_model, raw_dm, cfg):
     rnd_gen = torch.Generator().manual_seed(cfg.seed)
     train_ds = torch.utils.data.TensorDataset(train_latents, train_masks)
     val_ds = torch.utils.data.TensorDataset(val_latents, val_masks)
+    loader_cfg = OmegaConf.to_container(cfg.probe_loader, resolve=True)
     train_loader = torch.utils.data.DataLoader(
-        train_ds, *cfg.probe_loader,
+        train_ds, **loader_cfg,
         shuffle=True, drop_last=True, generator=rnd_gen,
     )
     val_loader = torch.utils.data.DataLoader(
-        val_ds, *cfg.probe_loader,
+        val_ds, **loader_cfg,
         shuffle=False, drop_last=False,
     )
     return spt.data.DataModule(train=train_loader, val=val_loader)
