@@ -175,7 +175,7 @@ class ProbeModule(pl.LightningModule):
         return self._step("fit", batch, batch_idx)
 
     def validation_step(self, batch, batch_idx):
-        return self._step("validation", batch, batch_idx)
+        return self._step("validate", batch, batch_idx)
 
     def setup_optimizer(self):
         self._optimizer = torch.optim.AdamW(
