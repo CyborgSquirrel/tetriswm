@@ -138,6 +138,16 @@ class ProbeModule(pl.LightningModule):
         latents, masks = batch  # (B, D), (B, W, H)
         masks = rearrange(masks, "b w h -> b (w h)")
 
+        b, *_ = latents.shape
+
+        if not self.manual:
+            samples_key = f"_{stage}_samples_num"
+            setattr(self, samples_key, getattr(self, samples_key, 0) + b)
+            logs[f"{stage}/samples"] = getattr(self, samples_key)
+
+            self.samples_num = getattr(self, "samples_num", 0) + b
+            logs["samples"] = self.samples_num
+
         logits = self.probe(latents)
         loss = F.binary_cross_entropy_with_logits(logits, masks)
         logs[self.prefix + f"{stage}/bce_loss"] = loss.detach()
