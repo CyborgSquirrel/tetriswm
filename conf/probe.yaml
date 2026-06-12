@@ -4,7 +4,8 @@ defaults:
 
 data:
   dataset:
-    num_steps: ${eval:'${wm.num_preds} + ${wm.history_size}'}
+    # num_steps: ${eval:'${wm.num_preds} + ${wm.history_size}'}
+    num_steps: ${eval:'1 + 3'} 
     frameskip: 1
     name: ${tetris.out}
     keys_to_load:

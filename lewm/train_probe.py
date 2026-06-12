@@ -223,7 +223,7 @@ def build_probe(latent_dim, out_dim, model_cfg):
         raise ValueError(f"probe.model.type must be 'linear' or 'mlp', got '{kind}'")
 
 
-@hydra.main(version_base=None, config_path="./config/train", config_name="probe")
+@hydra.main(version_base=None, config_path="../conf", config_name="probe")
 def run(cfg):
     world_model = load_world_model(cfg.world_model_path)
     raw_dm = build_dataloaders(cfg)
