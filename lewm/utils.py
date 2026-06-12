@@ -95,8 +95,6 @@ class agg:
                 self._best_key = k
 
 
-
-
 def pipe(a, *fns):
     for fn in fns:
         a = fn(a)
@@ -118,3 +116,37 @@ def torch_printoptions(**kwargs):
         yield
     finally:
         torch.set_printoptions(**old)
+
+
+def split_dataset(cfg, dataset, *, rnd_gen=object()):
+    match cfg.by:
+        case "window":
+            train_set, val_set = spt.data.random_split(
+                dataset,
+                lengths=[cfg.p, 1 - cfg.p],
+                generator=rnd_gen,
+            )
+        case "episode":
+            n_eps = len(dataset.lengths)
+            ep_order = torch.randperm(n_eps, generator=rnd_gen).tolist()
+            n_train = int(n_eps * cfg.p)
+            train_eps = set(ep_order[:n_train])
+            val_eps = set(ep_order[n_train:])
+            if n_eps <= 1000:
+                with torch_printoptions(threshold=torch.inf):
+                    print(f"{train_eps=}")
+                    print(f"{val_eps=}")
+            train_idx = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep in train_eps]
+            val_idx   = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep in val_eps]
+            train_set = torch.utils.data.Subset(dataset, train_idx)
+            val_set   = torch.utils.data.Subset(dataset, val_idx)
+        case "episode_idx":
+            train_eps = set(cfg.idx)
+            train_idx = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep     in train_eps]
+            val_idx   = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep not in train_eps]
+            train_set = torch.utils.data.Subset(dataset, train_idx)
+            val_set   = torch.utils.data.Subset(dataset, val_idx)
+        case _:
+            raise ValueError(f"Unexpected {cfg.by=}")
+
+    return train_set, val_set

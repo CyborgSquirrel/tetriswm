@@ -20,7 +20,7 @@ from torch import nn
 from jepa import JEPA
 from module import ARPredictor, Embedder, MLP, SIGReg, Normalizer, NanToNum, RearrangeWrap
 from train_probe import ProbeModule, build_probe
-from utils import get_column_normalizer, get_img_preprocessor, ModelObjectCallBack, torch_printoptions
+from utils import get_column_normalizer, get_img_preprocessor, ModelObjectCallBack, torch_printoptions, split_dataset
 from einops import repeat, rearrange, reduce
 from einops.layers.torch import EinMix, Rearrange
 
@@ -275,35 +275,7 @@ def run(cfg):
 
     rnd_gen = torch.Generator().manual_seed(cfg.seed)
     # TODO: log which episodes/windows were sorted into train/validation
-    match cfg.train_split.by:
-        case "window":
-            train_set, val_set = spt.data.random_split(
-                dataset,
-                lengths=[cfg.train_split.p, 1 - cfg.train_split.p],
-                generator=rnd_gen,
-            )
-        case "episode":
-            n_eps = len(dataset.lengths)
-            ep_order = torch.randperm(n_eps, generator=rnd_gen).tolist()
-            n_train = int(n_eps * cfg.train_split.p)
-            train_eps = set(ep_order[:n_train])
-            val_eps = set(ep_order[n_train:])
-            if n_eps <= 1000:
-                with torch_printoptions(threshold=torch.inf):
-                    print(f"{train_eps=}")
-                    print(f"{val_eps=}")
-            train_idx = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep in train_eps]
-            val_idx   = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep in val_eps]
-            train_set = torch.utils.data.Subset(dataset, train_idx)
-            val_set   = torch.utils.data.Subset(dataset, val_idx)
-        case "episode_idx":
-            train_eps = set(cfg.train_split.idx)
-            train_idx = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep     in train_eps]
-            val_idx   = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep not in train_eps]
-            train_set = torch.utils.data.Subset(dataset, train_idx)
-            val_set   = torch.utils.data.Subset(dataset, val_idx)
-        case _:
-            raise ValueError(f"Unexpected {cfg.train_split.by=}")
+    train_set, val_set = split_dataset(cfg.train_split, dataset, rnd_gen=rnd_gen)
 
     train = torch.utils.data.DataLoader(
         train_set,

@@ -1,4 +1,5 @@
 from pathlib import Path
+import os.path
 
 import wandb
 from tqdm import tqdm
@@ -12,7 +13,7 @@ from einops import rearrange
 from lightning.pytorch.loggers import WandbLogger
 from omegaconf import OmegaConf, open_dict
 
-from utils import get_column_normalizer, get_img_preprocessor, ModelObjectCallBack
+from utils import get_column_normalizer, get_img_preprocessor, ModelObjectCallBack, split_dataset
 
 
 def build_dataloaders(cfg):
@@ -31,32 +32,17 @@ def build_dataloaders(cfg):
     dataset.transform = spt.data.transforms.Compose(*transforms)
 
     rnd_gen = torch.Generator().manual_seed(cfg.seed)
-    match cfg.train_split.by:
-        case "window":
-            train_set, val_set = spt.data.random_split(
-                dataset,
-                lengths=[cfg.train_split.p, 1 - cfg.train_split.p],
-                generator=rnd_gen,
-            )
-        case "episode":
-            n_eps = len(dataset.lengths)
-            ep_order = torch.randperm(n_eps, generator=rnd_gen).tolist()
-            n_train = int(n_eps * cfg.train_split.p)
-            train_eps = set(ep_order[:n_train])
-            val_eps = set(ep_order[n_train:])
-            train_idx = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep in train_eps]
-            val_idx   = [i for i, (ep, _) in enumerate(dataset.clip_indices) if ep in val_eps]
-            train_set = torch.utils.data.Subset(dataset, train_idx)
-            val_set   = torch.utils.data.Subset(dataset, val_idx)
-        case _:
-            raise ValueError(f"Unexpected {cfg.train_split.by=}")
+    train_set, val_set = split_dataset(cfg.train_split, dataset, rnd_gen=rnd_gen)
 
     train = torch.utils.data.DataLoader(
-        train_set, **cfg.loader, shuffle=True, drop_last=True, generator=rnd_gen
+        train_set, **cfg.wm_loader,
+        shuffle=True, drop_last=True, generator=rnd_gen,
     )
     val = torch.utils.data.DataLoader(
-        val_set, **cfg.loader, shuffle=False, drop_last=False
+        val_set, **cfg.wm_loader,
+        shuffle=False, drop_last=False,
     )
+
     return spt.data.DataModule(train=train, val=val)
 
 
@@ -81,10 +67,10 @@ def cache_embeddings(world_model, dataloader, cfg, device):
 
 
 def build_cached_dataloaders(world_model, raw_dm, cfg):
-    cache_path = cfg.probe.get("latents_cache_path")
-    cache_path = cache_path and Path(cache_path)
+    cache_path = Path(os.path.splitext(cfg.world_model_path)[0] + "_emb.pt")
 
-    # TODO: different batch size for latents caching and probe training
+    # cache_path = cfg.grid_mask_probe.get("latents_cache_path")
+    # cache_path = cache_path and Path(cache_path)
 
     if cache_path is None or not cache_path.exists():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -94,34 +80,30 @@ def build_cached_dataloaders(world_model, raw_dm, cfg):
         val_latents, val_masks = cache_embeddings(world_model, raw_dm.val_dataloader(), cfg, device)
 
         if cache_path is not None:
-            print(f"Saving cached embeddings to {cache_path}")
+            print(f"Saving cached embeddings to {repr(str(cache_path))}")
             torch.save(
-                {"train_latents": train_latents, "train_masks": train_masks,
-                 "val_latents": val_latents, "val_masks": val_masks},
+                {
+                    "train_latents": train_latents, "train_masks": train_masks,
+                    "val_latents": val_latents, "val_masks": val_masks,
+                },
                 cache_path,
             )
     else:
-        print(f"Loading cached embeddings from {cache_path}")
+        print(f"Loading cached embeddings from {repr(str(cache_path))}")
         saved = torch.load(cache_path, map_location="cpu", weights_only=True)
         train_latents, train_masks = saved["train_latents"], saved["train_masks"]
         val_latents, val_masks = saved["val_latents"], saved["val_masks"]
-
-    loader_kwargs = dict(cfg.loader)
-    loader_kwargs.pop("prefetch_factor", None)
-    loader_kwargs.pop("pin_memory", None)
-    loader_kwargs.pop("persistent_workers", None)
 
     rnd_gen = torch.Generator().manual_seed(cfg.seed)
     train_ds = torch.utils.data.TensorDataset(train_latents, train_masks)
     val_ds = torch.utils.data.TensorDataset(val_latents, val_masks)
     train_loader = torch.utils.data.DataLoader(
-        train_ds, batch_size=loader_kwargs["batch_size"], shuffle=True,
-        drop_last=True, generator=rnd_gen,
-        num_workers=0,
+        train_ds, *cfg.probe_loader,
+        shuffle=True, drop_last=True, generator=rnd_gen,
     )
     val_loader = torch.utils.data.DataLoader(
-        val_ds, batch_size=loader_kwargs["batch_size"], shuffle=False,
-        drop_last=False, num_workers=0,
+        val_ds, *cfg.probe_loader,
+        shuffle=False, drop_last=False,
     )
     return spt.data.DataModule(train=train_loader, val=val_loader)
 
@@ -243,13 +225,14 @@ def build_probe(latent_dim, out_dim, model_cfg):
 
 @hydra.main(version_base=None, config_path="./config/train", config_name="probe")
 def run(cfg):
-    world_model = load_world_model(cfg.probe.world_model_path)
+    world_model = load_world_model(cfg.world_model_path)
     raw_dm = build_dataloaders(cfg)
     data_module = build_cached_dataloaders(world_model, raw_dm, cfg)
 
-    latent_dim = cfg.wm.embed_dim
-    grid_cells = cfg.probe.grid_width * cfg.probe.grid_height
-    probe = build_probe(latent_dim, grid_cells, cfg.probe.model)
+    # latent_dim = cfg.wm.embed_dim
+    latent_dim = cfg.grid_mask_probe.embed_dim
+    grid_cells = cfg.grid_mask_probe.grid_width * cfg.grid_mask_probe.grid_height
+    probe = build_probe(latent_dim, grid_cells, cfg.grid_mask_probe.model)
 
     run_id = cfg.get("subdir") or ""
     run_dir = Path(swm.data.utils.get_cache_dir(), run_id)
@@ -264,9 +247,12 @@ def run(cfg):
     if cfg.wandb.enabled:
         wandb.finish()
         logger = WandbLogger(**cfg.wandb.config)
-        logger.log_hyperparams(OmegaConf.to_container(cfg))
+        logger.log_hyperparams({
+            **OmegaConf.to_container(cfg, resolve=True),
+            "raw": OmegaConf.to_container(cfg, resolve=False),
+        })
 
-    module = ProbeModule(probe=probe, cfg=cfg.probe)
+    module = ProbeModule(probe=probe, cfg=cfg.grid_mask_probe, prefix="probe/")
     object_dump_callback = ModelObjectCallBack(
         dirpath=run_dir, filename=cfg.output_model_name, epoch_interval=1,
     )

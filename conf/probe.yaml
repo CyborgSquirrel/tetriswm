@@ -1,0 +1,77 @@
+defaults:
+  - _self_
+  - tetris: ???
+
+data:
+  dataset:
+    num_steps: ${eval:'${wm.num_preds} + ${wm.history_size}'}
+    frameskip: 1
+    name: ${tetris.out}
+    keys_to_load:
+      - pixels
+      - action
+      - tetris_grid_mask
+    keys_to_cache:
+      - action
+
+train_split:
+  by: window  # or episode
+  p: 0.9
+
+output_model_name: lewm_probe
+subdir: ${now:%s}_${hydra:job.id}
+
+world_model_path: ???
+
+seed: 3072
+img_size: ${tetris.tetris.render_size}
+num_workers: 6
+checkpoint_interval: ${eval:'${trainer.max_epochs} // 10'}
+
+trainer:
+  default_root_dir: outputs
+  max_epochs: 50
+  devices: auto
+  accelerator: gpu
+  precision: bf16
+  # gradient_clip_val: 1.0
+
+wm_loader:
+  batch_size: 256
+  num_workers: ${num_workers}
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+
+probe_loader:
+  batch_size: ???
+  num_workers: ${num_workers}
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+
+wandb:
+  enabled: True
+  config:
+    entity: andrei-jardan-technical-university-of-munich
+    project: genai-tetris
+    name: ${output_model_name}
+    id: ${subdir}
+    resume: allow
+    log_model: False
+
+grid_mask_probe:
+  enabled: True
+  grid_width: ${tetris.tetris.width}
+  grid_height: ${tetris.tetris.height}
+  checkpoint_interval: ${checkpoint_interval}
+  reset_interval: null
+  preview_images: 8
+  embed_dim: 192
+  model:
+    type: linear
+    hidden_dim: 512
+    num_layers: 2
+  optimizer:
+    lr: 1e-3
+    weight_decay: 1e-4
