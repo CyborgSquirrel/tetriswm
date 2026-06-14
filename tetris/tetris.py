@@ -210,7 +210,7 @@ def rng_derive_seed(rng: np.random.Generator | random.Random):
 
 class BagGenerator:
     def __init__(self, minoes, *, rng: np.random.Generator):
-        self.minoes = [Minoes[m].value if isinstance(m, str) else m for m in minoes]
+        self.minoes = minoes
         if len(self.minoes) <= 0:
             raise ValueError()
 
@@ -222,7 +222,7 @@ class BagGenerator:
             for mino in self.minoes:
                 self.bag.append(mino)
             self.rng.shuffle(self.bag)
-        return self.bag.pop()
+        return Minoes[self.bag.pop()].value
 
 
 class GtDynamics:
@@ -240,7 +240,7 @@ class GtDynamics:
 
         self.mino_generator = (
             mino_generator
-            or BagGenerator([mino.value for mino in Minoes], rng=np.random.default_rng(rng_derive_seed(rng)))
+            or BagGenerator(list(Minoes), rng=np.random.default_rng(rng_derive_seed(rng)))
         )
 
     def _init(self, tetris):
@@ -341,7 +341,7 @@ class GtDynamics:
 
         # Clear rows
         dy = 0
-        for y in range(self.tetris.height-1, 0, -1):
+        for y in range(self.tetris.height-1, -1, -1):
             empty_tiles_num = np.sum(self.grid[:,y] == 0)
             if empty_tiles_num == 0:
                 self.cleared_rows += 1
@@ -349,7 +349,7 @@ class GtDynamics:
             else:
                 if dy > 0:
                     self.grid[:,y+dy] = self.grid[:,y]
-        for y in range(dy-1, 0, -1):
+        for y in range(dy):
             self.grid[:,y] = 0
 
         self._spawn_mino()
@@ -407,7 +407,7 @@ class WmDynamics:
         if action is not None:
             action_enc[action-1] = 1
         action_enc = rearrange(action_enc, "d -> 1 1 d")
-        action_emb = self.world_model.action_encoder(action_enc)
+        action_emb = self.world_model.action_encoder(self.world_model.action_trans(action_enc))
         return action_emb
 
     def step(self, action: Action):

@@ -1,6 +1,12 @@
 import os
+import sys
+from pathlib import Path
 
 os.environ["MUJOCO_GL"] = "egl"
+
+# Hydra sets sys.path[0] to the script directory (lewm/), not the project root,
+# so local packages like `tetris` are not importable without this.
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import time
 from pathlib import Path
@@ -13,6 +19,7 @@ from omegaconf import DictConfig, OmegaConf
 from sklearn import preprocessing
 from torchvision.transforms import v2 as transforms
 import stable_worldmodel as swm
+import tetris.gym_env  # noqa: F401 — registers tetris/Tetris-v1 with gymnasium
 
 def img_transform(cfg):
     transform = transforms.Compose(
@@ -55,7 +62,7 @@ def run(cfg: DictConfig):
 
     # create world environment
     cfg.world.max_episode_steps = 2 * cfg.eval.eval_budget
-    world = swm.World(**cfg.world, image_shape=(224, 224))
+    world = swm.World(**cfg.world, image_shape=(cfg.eval.img_size, cfg.eval.img_size))
 
     # create the transform
     transform = {
@@ -69,24 +76,24 @@ def run(cfg: DictConfig):
     ep_indices, _ = np.unique(stats_dataset.get_col_data(col_name), return_index=True)
 
     process = {}
-    for col in cfg.dataset.keys_to_cache:
-        if col in ["pixels"]:
-            continue
-        processor = preprocessing.StandardScaler()
-        col_data = stats_dataset.get_col_data(col)
-        col_data = col_data[~np.isnan(col_data).any(axis=1)]
-        processor.fit(col_data)
-        process[col] = processor
+    # for col in cfg.dataset.keys_to_cache:
+    #     if col in ["pixels"]:
+    #         continue
+    #     processor = preprocessing.StandardScaler()
+    #     col_data = stats_dataset.get_col_data(col)
+    #     col_data = col_data[~np.isnan(col_data).any(axis=1)]
+    #     processor.fit(col_data)
+    #     process[col] = processor
 
-        if col != "action":
-            process[f"goal_{col}"] = process[col]
+    #     if col != "action":
+    #         process[f"goal_{col}"] = process[col]
 
     # -- run evaluation
     policy = cfg.get("policy", "random")
 
     if policy != "random":
         model = swm.policy.AutoCostModel(cfg.policy)
-        model = model.to("cuda")
+        model = model.to(cfg.get("device", "cuda"))
         model = model.eval()
         model.requires_grad_(False)
         model.interpolate_pos_encoding = True

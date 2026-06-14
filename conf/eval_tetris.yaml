@@ -1,0 +1,63 @@
+defaults:
+  - launcher: local
+  - solver: cem
+  - _self_
+
+world:
+  env_name: tetris/Tetris-v1
+  num_envs: ${eval.num_eval}
+  max_episode_steps: ??? # set to 2 * eval.eval_budget in eval.py
+  history_size: 1
+  frame_skip: 1
+  tetris_cfg:
+    width: 8
+    height: 12
+    render_size: 126
+    mino_generator:
+      _target_: tetris.tetris.BagGenerator
+      minoes: [I]
+
+dataset:
+  # stats: ${eval.dataset_name}
+  keys_to_cache:
+    - action
+
+seed: 42
+policy: random
+
+plan_config:
+  # horizon: 5
+  # receding_horizon: 5
+  # action_block: 5
+  horizon: 1
+  receding_horizon: 1
+  action_block: 1
+
+eval:
+  num_eval: 50
+  goal_offset_steps: 5
+  eval_budget: 4
+  img_size: 126
+  dataset_name: ${dataset.name}
+  callables:
+    - method: _set_state
+      args:
+        placed_grid:
+          value: state_placed_grid
+        mino_coords:
+          value: state_mino_coords
+        mino_half:
+          value: state_mino_half
+        mino_origin:
+          value: state_mino_origin
+        mino_rotations:
+          value: state_mino_rotations
+        mino_tile_idx:
+          value: state_mino_tile_idx
+    - method: _set_goal_state
+      args:
+        goal_grid:
+          value: goal_tetris_grid_mask
+
+output:
+  filename: tetris_results.txt

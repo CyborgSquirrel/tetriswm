@@ -92,8 +92,10 @@ class JEPA(nn.Module):
 
         assert "pixels" in info, "pixels not in info_dict"
         H = info["pixels"].size(2)
-        action_sequence = self.action_trans(action_sequence)
         B, S, T = action_sequence.shape[:3]
+        # action_trans operates on (b t d), fold S into batch for the transform
+        action_sequence = self.action_trans(rearrange(action_sequence, "b s t d -> (b s) t d"))
+        action_sequence = rearrange(action_sequence, "(b s) t d -> b s t d", b=B, s=S)
         act_0, act_future = torch.split(action_sequence, [H, T - H], dim=2)
         info["action"] = act_0
         n_steps = T - H

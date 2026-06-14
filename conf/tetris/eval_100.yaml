@@ -1,0 +1,13 @@
+out: tetris_eval_100
+traj_num: 100
+traj_len: 25
+seed: 41
+remove_actions: []
+
+tetris:
+  width: 8
+  height: 12
+  render_size: 126
+  mino_generator:
+    _target_: tetris.tetris.BagGenerator
+    minoes: [I]

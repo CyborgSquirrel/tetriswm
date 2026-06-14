@@ -5,5 +5,5 @@ num_samples: 300
 var_scale: 1.0
 n_steps: 30
 topk: 30
-device: "cuda"
+device: ${oc.select:device,cuda}
 seed: ${seed}

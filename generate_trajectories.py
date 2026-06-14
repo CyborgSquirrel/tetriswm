@@ -33,6 +33,13 @@ def main(cfg: DictConfig):
   keys["ep_len"] = {}
   keys["ep_idx"] = {}
   keys["ep_offset"] = {}
+  keys["step_idx"] = {}
+  keys["state_placed_grid"] = {}
+  keys["state_mino_coords"] = {}
+  keys["state_mino_half"] = {}
+  keys["state_mino_origin"] = {}
+  keys["state_mino_rotations"] = {}
+  keys["state_mino_tile_idx"] = {}
 
   # Write to HDF5 file
   with ctl.ExitStack() as stack:
@@ -72,6 +79,7 @@ def main(cfg: DictConfig):
       ep_offset = ep_offset_it
       for step_idx in range(cfg.traj_len):
         data["ep_idx"].append(ep_idx)
+        data["step_idx"].append(step_idx)
 
         ep_offset_it += 1
 
@@ -80,6 +88,14 @@ def main(cfg: DictConfig):
 
         data["tetris_grid_mask"].append((env.grid != 0).astype(np.uint8))
         data["tetris_mino_mask"].append(env.mino_mask.astype(np.uint8))
+
+        dyn = env.dynamics
+        data["state_placed_grid"].append(dyn.grid.copy())
+        data["state_mino_coords"].append(dyn.current.coords.astype(np.int16))
+        data["state_mino_half"].append(dyn.current.half.astype(np.int16))
+        data["state_mino_origin"].append(dyn.current.origin.astype(np.int16))
+        data["state_mino_rotations"].append(np.int16(dyn.current.rotations))
+        data["state_mino_tile_idx"].append(np.int16(dyn.tetris.tile_set.obj_to_oid[dyn.current.tile]))
 
         # TODO: Le-WM actions seem to range between [-1;1] in the training
         # datasets, maybe do the same here.
