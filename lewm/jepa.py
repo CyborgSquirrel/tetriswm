@@ -36,6 +36,10 @@ class JEPA(nn.Module):
         self.patch_proj = patch_proj
 
     def encode_pixels(self, pixels):
+        """
+        pixels: (B, T, C, H, W)
+        """
+
         pixels = pixels.float()
         b = pixels.size(0)
         pixels = rearrange(pixels, "b t ... -> (b t) ...")  # flatten for encoding
