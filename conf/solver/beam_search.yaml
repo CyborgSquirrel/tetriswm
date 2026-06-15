@@ -1,0 +1,7 @@
+_target_: lewm.beam_search_solver.BeamSearchSolver
+model: ???
+beam_width: 10
+batch_size: 1
+device: ${oc.select:device,cpu}
+seed: ${seed}
+total_steps: ${eval.goal_offset_steps}

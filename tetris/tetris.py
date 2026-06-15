@@ -162,23 +162,25 @@ class ObjectSet:
 
 TILE_SET = ObjectSet()
 
-TILE_EMPTY = TILE_SET.add(TileDef( color=(0  , 0  , 0  ) ))
-TILE_I     = TILE_SET.add(TileDef( color=(0  , 240, 240) ))
-TILE_L     = TILE_SET.add(TileDef( color=(240, 160, 0  ) ))
-TILE_J     = TILE_SET.add(TileDef( color=(0  , 0  , 240) ))
-TILE_O     = TILE_SET.add(TileDef( color=(240, 240, 0  ) ))
-TILE_Z     = TILE_SET.add(TileDef( color=(240, 0  , 0  ) ))
-TILE_S     = TILE_SET.add(TileDef( color=(0  , 240, 0  ) ))
-TILE_T     = TILE_SET.add(TileDef( color=(160, 0  , 240) ))
+TILE_EMPTY = TILE_SET.add( TileDef(color=(0  , 0  , 0  )) )
+TILE_I     = TILE_SET.add( TileDef(color=(0  , 240, 240)) )
+TILE_L     = TILE_SET.add( TileDef(color=(240, 160, 0  )) )
+TILE_J     = TILE_SET.add( TileDef(color=(0  , 0  , 240)) )
+TILE_O     = TILE_SET.add( TileDef(color=(240, 240, 0  )) )
+TILE_Z     = TILE_SET.add( TileDef(color=(240, 0  , 0  )) )
+TILE_S     = TILE_SET.add( TileDef(color=(0  , 240, 0  )) )
+TILE_T     = TILE_SET.add( TileDef(color=(160, 0  , 240)) )
 
-class Minoes(enum.Enum):
-    I = Mino(coords=[(-1, 0), ( 0, 0), ( 1, 0), ( 2, 0)], half=(1, 1), tile=TILE_I)
-    L = Mino(coords=[(-1, 0), ( 0, 0), ( 1, 0), ( 1,-1)], half=(0, 0), tile=TILE_L)
-    J = Mino(coords=[(-1,-1), (-1, 0), ( 0, 0), ( 1, 0)], half=(0, 0), tile=TILE_J)
-    O = Mino(coords=[( 0, 0), ( 1, 0), ( 0, 1), ( 1, 1)], half=(1, 1), tile=TILE_O)
-    Z = Mino(coords=[(-1,-1), ( 0,-1), ( 0, 0), ( 1, 0)], half=(0, 0), tile=TILE_Z)
-    S = Mino(coords=[( 1,-1), ( 0,-1), ( 0, 0), (-1, 0)], half=(0, 0), tile=TILE_S)
-    T = Mino(coords=[(-1, 0), ( 0, 0), ( 1, 0), ( 0,-1)], half=(0, 0), tile=TILE_T)
+MINO_SET = ObjectSet()
+STR_TO_MINO = {}
+
+MINO_I = MINO_SET.add( Mino(coords=[(-1, 0), ( 0, 0), ( 1, 0), ( 2, 0)], half=(1, 1), tile=TILE_I) ); STR_TO_MINO["I"] =MINO_I 
+MINO_L = MINO_SET.add( Mino(coords=[(-1, 0), ( 0, 0), ( 1, 0), ( 1,-1)], half=(0, 0), tile=TILE_L) ); STR_TO_MINO["L"] =MINO_L 
+MINO_J = MINO_SET.add( Mino(coords=[(-1,-1), (-1, 0), ( 0, 0), ( 1, 0)], half=(0, 0), tile=TILE_J) ); STR_TO_MINO["J"] =MINO_J 
+MINO_O = MINO_SET.add( Mino(coords=[( 0, 0), ( 1, 0), ( 0, 1), ( 1, 1)], half=(1, 1), tile=TILE_O) ); STR_TO_MINO["O"] =MINO_O 
+MINO_Z = MINO_SET.add( Mino(coords=[(-1,-1), ( 0,-1), ( 0, 0), ( 1, 0)], half=(0, 0), tile=TILE_Z) ); STR_TO_MINO["Z"] =MINO_Z 
+MINO_S = MINO_SET.add( Mino(coords=[( 1,-1), ( 0,-1), ( 0, 0), (-1, 0)], half=(0, 0), tile=TILE_S) ); STR_TO_MINO["S"] =MINO_S 
+MINO_T = MINO_SET.add( Mino(coords=[(-1, 0), ( 0, 0), ( 1, 0), ( 0,-1)], half=(0, 0), tile=TILE_T) ); STR_TO_MINO["T"] =MINO_T 
 
 
 class Action(enum.IntEnum):
@@ -210,7 +212,16 @@ def rng_derive_seed(rng: np.random.Generator | random.Random):
 
 class BagGenerator:
     def __init__(self, minoes, *, rng: np.random.Generator):
-        self.minoes = minoes
+        self.minoes = []
+        for mino in minoes:
+            if isinstance(mino, str):
+                mino = STR_TO_MINO[mino]
+            if isinstance(mino, Mino):
+                mino = MINO_SET.obj_to_oid[mino]
+            if not isinstance(mino, int):
+                raise RuntimeError()
+            self.minoes.append(mino)
+
         if len(self.minoes) <= 0:
             raise ValueError()
 
@@ -222,7 +233,8 @@ class BagGenerator:
             for mino in self.minoes:
                 self.bag.append(mino)
             self.rng.shuffle(self.bag)
-        return Minoes[self.bag.pop()].value
+        mino = self.bag.pop()
+        return MINO_SET.oid_to_obj[mino].copy()
 
 
 class GtDynamics:
@@ -240,7 +252,7 @@ class GtDynamics:
 
         self.mino_generator = (
             mino_generator
-            or BagGenerator(list(Minoes), rng=np.random.default_rng(rng_derive_seed(rng)))
+            or BagGenerator(list(MINO_SET.oid_to_obj), rng=np.random.default_rng(rng_derive_seed(rng)))
         )
 
     def _init(self, tetris):
