@@ -106,11 +106,18 @@ def run(cfg: DictConfig):
     else:
         policy = swm.policy.RandomPolicy()
 
-    results_path = (
-        Path(swm.data.utils.get_cache_dir(), cfg.policy).parent
-        if cfg.policy != "random"
-        else Path(__file__).parent
-    )
+    # Figure out results path
+    results_path = None
+    if (p := OmegaConf.select(cfg, "subdir")) is not None:
+        results_path = Path(p)
+
+    if results_path is None:
+        if cfg.policy == "random":
+            results_path = Path(__file__).parent
+        else:
+            results_path = Path(swm.data.utils.get_cache_dir(), cfg.policy).parent
+
+    print(f"results_path = {repr(str(results_path))}")
 
     # sample the episodes and the starting indices
     episode_len = get_episodes_length(dataset, ep_indices)
@@ -166,7 +173,7 @@ def run(cfg: DictConfig):
         f.write("\n")  # separate from previous runs
 
         f.write("==== CONFIG ====\n")
-        f.write(OmegaConf.to_yaml(cfg))
+        f.write(OmegaConf.to_yaml(cfg, resolve=True))
         f.write("\n")
 
         f.write("==== RESULTS ====\n")

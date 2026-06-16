@@ -25,6 +25,8 @@ dataset:
 seed: 42
 policy: random
 
+subdir: ${now:%s}_${hydra:job.id}
+
 plan_config:
   # horizon: 5
   # receding_horizon: 5
