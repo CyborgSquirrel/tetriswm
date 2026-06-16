@@ -109,7 +109,7 @@ def run(cfg: DictConfig):
     # Figure out results path
     results_path = None
     if (p := OmegaConf.select(cfg, "subdir")) is not None:
-        results_path = Path(p)
+        results_path = Path(swm.data.utils.get_cache_dir(), p)
 
     if results_path is None:
         if cfg.policy == "random":
