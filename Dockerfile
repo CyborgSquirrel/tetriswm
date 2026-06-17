@@ -21,6 +21,7 @@ RUN --mount=type=cache,dst=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y \
     # Misc
         build-essential \
+        python3-dev \
         git \
         swig \
         curl \
@@ -68,11 +69,18 @@ ENV UV_PROJECT_ENVIRONMENT=/home/user/venv
 ENV VIRTUAL_ENV=/home/user/venv
 ENV PATH="/home/user/venv/bin:$PATH"
 
+# NOTE(andrei): It has been roughly a month since we last generated the
+# requirements.lock file, and if we try to regenerate it now, it resolves to
+# dependencies which cause breakage in the project.
+#
+# So for the time being we'll use the lockfile instead of requirements.txt.
+
 # Copy requirements first for better caching
-COPY --chown=$XUID:$XGID requirements.txt .
+# COPY --chown=$XUID:$XGID requirements.txt .
+COPY --chown=$XUID:$XGID requirements.lock .
 RUN --mount=type=cache,uid=$XUID,gid=$XGID,dst=/home/user/.cache/uv \
 <<EOF
-uv pip compile requirements.txt -o requirements.lock
+# uv pip compile requirements.txt -o requirements.lock
 uv pip sync requirements.lock
 # NOTE: outdated `datasets` gets installed for some reason, so forcefully
 # upgrading it
