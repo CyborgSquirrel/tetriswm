@@ -35,7 +35,7 @@ class BeamSearchSolver:
         device: str | torch.device = "cpu",
         seed: int = 1234,
     ) -> None:
-        self.model = model
+        self.model = model.to(device)
         self.total_steps = total_steps
         self.beam_width = beam_width
         self.batch_size = batch_size
@@ -46,7 +46,7 @@ class BeamSearchSolver:
         self._config = None
         self._configured = False
 
-        self.step_idx = 0
+        # self.step_idx = 0
 
     def configure(self, *, action_space: gym.Space, n_envs: int, config: Any) -> None:
         self._n_envs = n_envs
@@ -84,9 +84,11 @@ class BeamSearchSolver:
             dict with 'actions' key of shape (n_envs, receding_horizon, n_actions).
         """
 
-        prev_step_idx, self.step_idx = self.step_idx, self.step_idx + self._config.receding_horizon
-        plan_step_idx = min(self.step_idx + self._config.horizon - self._config.receding_horizon, self.total_steps-1)
-        plan_steps = plan_step_idx - prev_step_idx
+        # prev_step_idx, self.step_idx = self.step_idx, self.step_idx + self._config.receding_horizon
+        # plan_step_idx = min(self.step_idx + self._config.horizon - self._config.receding_horizon, self.total_steps-1)
+        # plan_steps = plan_step_idx - prev_step_idx
+
+        plan_steps = self.horizon
 
         n_envs = self._n_envs
         n_actions = self._n_actions
@@ -112,12 +114,13 @@ class BeamSearchSolver:
                       for k, v in info_dict.items()}
 
             # Encode initial pixels once: (bs, T_init, D)
-            init_emb = model.encode_pixels(info_b["pixels"])
+            init_pix = info_b["pixels"].to(device)
+            init_emb = model.encode_pixels(init_pix)
             D_emb = init_emb.shape[-1]
 
             # Encode goal once.
             # goal is (bs, H, W, C) — no T dim; add it so encode_pixels sees (bs, 1, H, W, C).
-            goal_pix = info_b["goal"]
+            goal_pix = info_b["goal"].to(device)
             goal_emb = model.encode_pixels(goal_pix)  # (bs, 1, D)
             goal_last = goal_emb[:, -1]  # (bs, D)
 
