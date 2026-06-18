@@ -10,6 +10,7 @@ import numpy as np
 from hydra.utils import instantiate
 from tetris import layout
 from tetris import draw
+from collections import deque as Deque
 import lewm.jepa
 import lewm.patch_jepa
 import lewm.module
@@ -59,6 +60,7 @@ class Mino:
         half: tuple[bool, bool],
         tile: TileDef,
     ):
+        # (4, 2)
         self.coords    = np.array(coords, dtype=np.int32)
         self.half      = np.array(half, dtype=np.int32)
         self.origin    = np.zeros(2, dtype=np.int32)
@@ -233,8 +235,8 @@ class BagGenerator:
             for mino in self.minoes:
                 self.bag.append(mino)
             self.rng.shuffle(self.bag)
-        mino = self.bag.pop()
-        return MINO_SET.oid_to_obj[mino].copy()
+        mino_oid = self.bag.pop()
+        return mino_oid
 
 
 class GtDynamics:
@@ -264,7 +266,9 @@ class GtDynamics:
             dtype=np.uint8,
         )
 
-        self._spawn_mino()
+        self.queue = Deque()
+
+        self._ensure_current_mino()
 
         self._update_parent()
 
@@ -278,13 +282,24 @@ class GtDynamics:
                     mino_mask[x, y] = True
         self.tetris.grid = grid
         self.tetris.mino_mask = mino_mask
+        self.tetris.queue = np.array(self.queue)
 
-    def _spawn_mino(self):
-        # Spawn mino if missing
-        if self.current is None:
-            mino = self.mino_generator.generate()
-            mino = mino.center(self.tetris.width)
-            self.current = mino
+    def _pop_next_mino(self):
+        while len(self.queue) < self.tetris.queue_len + 1:
+            mino_oid = self.mino_generator.generate()
+            self.queue.append(mino_oid)
+
+        mino_oid = self.queue.popleft()
+        mino = MINO_SET.oid_to_obj[mino_oid].copy()
+        mino = mino.center(self.tetris.width)
+        return mino
+
+    def _ensure_current_mino(self):
+        if self.current is not None:
+            return
+
+        mino = self._pop_next_mino()
+        self.current = mino
 
     def _rotate_mino(self, rotation: MinoRotation):
         mino = self.current.copy()
@@ -364,7 +379,7 @@ class GtDynamics:
         for y in range(dy):
             self.grid[:,y] = 0
 
-        self._spawn_mino()
+        self._ensure_current_mino()
 
     def step(self, action: Action):
         self._step(action)
@@ -443,6 +458,7 @@ class Tetris:
         width: int = 10,
         height: int = 20,
         render_size: int = 224,
+        queue_len: int = 0,
         dynamics = None,
     ):
         self.width = width
@@ -453,12 +469,21 @@ class Tetris:
         self.tile_set = TILE_SET
         self.tile_color_lut = np.array([ tile.color for tile in TILE_SET.oid_to_obj ])
 
+        self.tile_size = 10
+
+        self.queue_len = queue_len
+
+        # Initialize dynamics after parameters are set on tetris
         self.dynamics = dynamics or GtDynamics()
         self.dynamics._init(self)
 
         with layout.Frame(self.render_size, self.render_size):
-            with layout.Center():
-                self.lay_grid = layout.Rect(self.width*10, self.height*10)
+            with layout.Center(), layout.HStack(2):
+                self.lay_grid = layout.Rect(self.width*self.tile_size, self.height*self.tile_size)
+                with layout.VStack(2):
+                    self.lay_queue = []
+                    for _ in range(self.queue_len):
+                        self.lay_queue.append(layout.Rect(4*self.tile_size, 2*self.tile_size))
 
     @classmethod
     def from_config(cls, cfg, *, rng=None, dynamics=None):
@@ -470,6 +495,7 @@ class Tetris:
             width=cfg.width,
             height=cfg.height,
             render_size=cfg.render_size,
+            queue_len=cfg.queue_len,
             dynamics=dynamics,
         )
 
@@ -480,11 +506,25 @@ class Tetris:
         COLOR_BG = (128, 128, 128)
 
         canvas = np.zeros((self.render_size, self.render_size, 3), dtype=np.uint8)
-        canvas[:,:] = COLOR_BG
+        canvas[...] = COLOR_BG
 
         grid = self.tile_color_lut[self.grid]
-        grid = draw.scale(grid, 10)
+        grid = draw.scale(grid, self.tile_size)
 
         draw.blit(canvas, grid, self.lay_grid.x, self.lay_grid.y)
+
+        for mino_oid, lay in zip(self.queue, self.lay_queue):
+            mino = MINO_SET.oid_to_obj[mino_oid]
+
+            mino_grid = np.zeros((4, 2, 3), dtype=np.uint8)
+            mino_grid[...] = COLOR_BG
+
+            m = np.min(mino.coords, axis=0)
+
+            for x,y in (mino.coords - m):
+                mino_grid[x,y] = mino.tile.color
+
+            mino_grid = draw.scale(mino_grid, self.tile_size)
+            draw.blit(canvas, mino_grid, lay.x, lay.y)
 
         return canvas

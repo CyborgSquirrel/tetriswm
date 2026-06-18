@@ -8,6 +8,7 @@ tetris:
   width: 8
   height: 12
   render_size: 126
+  queue_len: 5
   mino_generator:
     _target_: tetris.tetris.BagGenerator
     minoes: [I, O]

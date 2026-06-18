@@ -115,6 +115,117 @@ class GridMaskProbeCallback(pl.Callback):
             self.probe_module.probe.apply(_reset_parameters)
 
 
+class QueueProbeModule(pl.LightningModule):
+    def __init__(self, probe, cfg, *, prefix="", manual=False):
+        super().__init__()
+        self.probe = probe
+        self.cfg = cfg
+        self.prefix = prefix
+        self.manual = manual
+
+    def _step(self, stage, batch, batch_idx):
+        logs = {}
+        latents, queue = batch  # (B, D), (B, queue_len)
+        b = latents.shape[0]
+
+        if not self.manual:
+            samples_key = f"_{stage}_samples_num"
+            setattr(self, samples_key, getattr(self, samples_key, 0) + b)
+            logs[f"{stage}/samples"] = getattr(self, samples_key)
+            self.samples_num = getattr(self, "samples_num", 0) + b
+            logs["samples"] = self.samples_num
+
+        logits = self.probe(latents)  # (B, queue_len * num_classes)
+        num_classes = self.cfg.num_classes
+        queue_len = self.cfg.queue_len
+        logits = rearrange(logits, "b (q c) -> (b q) c", q=queue_len, c=num_classes)
+        targets = rearrange(queue.long(), "b q -> (b q)")
+
+        loss = F.cross_entropy(logits, targets)
+        logs[self.prefix + f"{stage}/ce_loss"] = loss.detach()
+
+        with torch.no_grad():
+            preds = logits.argmax(dim=-1)
+            acc = (preds == targets).float().mean()
+            logs[self.prefix + f"{stage}/acc"] = acc
+
+        self.log_dict(logs, on_step=True, sync_dist=True)
+        return loss
+
+    def training_step(self, batch, batch_idx):
+        return self._step("fit", batch, batch_idx)
+
+    def validation_step(self, batch, batch_idx):
+        return self._step("validate", batch, batch_idx)
+
+    def setup_optimizer(self):
+        self._optimizer = torch.optim.AdamW(
+            self.probe.parameters(),
+            lr=self.cfg.optimizer.lr,
+            weight_decay=self.cfg.optimizer.weight_decay,
+        )
+
+    def configure_optimizers(self):
+        return torch.optim.AdamW(
+            self.probe.parameters(),
+            lr=self.cfg.optimizer.lr,
+            weight_decay=self.cfg.optimizer.weight_decay,
+        )
+
+
+class QueueProbeCallback(pl.Callback):
+    def __init__(self, full_cfg, run_dir):
+        self.run_dir = run_dir
+        probe_cfg = OmegaConf.select(full_cfg, "queue_probe", default=OmegaConf.create({}))
+        out_dim = probe_cfg.queue_len * probe_cfg.num_classes
+        probe_net = build_probe(full_cfg.wm.embed_dim, out_dim, probe_cfg.model)
+        self.probe_module = QueueProbeModule(
+            probe=probe_net,
+            cfg=probe_cfg,
+            prefix="queue_probe/",
+            manual=True,
+        )
+
+    def on_fit_start(self, trainer, pl_module):
+        self.probe_module = self.probe_module.to(pl_module.device)
+        self.probe_module.setup_optimizer()
+        self.probe_module.log_dict = lambda *args, **kwargs: pl_module.log_dict(*args, **kwargs)
+        self.probe_module.trainer = trainer
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        probe_batch = (
+            rearrange(outputs["emb"].detach().float(), "b t ... -> (b t) ..."),
+            rearrange(batch["tetris_queue"], "b t ... -> (b t) ..."),
+        )
+        self.probe_module._optimizer.zero_grad()
+        loss = self.probe_module.training_step(probe_batch, batch_idx)
+        loss.backward()
+        self.probe_module._optimizer.step()
+
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        probe_batch = (
+            rearrange(outputs["emb"].detach().float(), "b t ... -> (b t) ..."),
+            rearrange(batch["tetris_queue"], "b t ... -> (b t) ..."),
+        )
+        self.probe_module.validation_step(probe_batch, batch_idx)
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        interval = OmegaConf.select(self.probe_module.cfg, "checkpoint_interval")
+        if interval is None:
+            return
+        epoch = trainer.current_epoch
+        if (epoch + 1) % interval == 0:
+            path = self.run_dir / f"queue_probe_epoch_{epoch:04d}.pt"
+            torch.save(self.probe_module.probe, path)
+
+    def on_train_epoch_start(self, trainer, pl_module):
+        interval = OmegaConf.select(self.probe_module.cfg, "reset_interval")
+        if interval is None:
+            return
+        if trainer.current_epoch % interval == 0:
+            self.probe_module.probe.apply(_reset_parameters)
+
+
 class ClampSchedulerCallback(pl.Callback):
     def on_train_epoch_start(self, trainer, pl_module):
         for config in trainer.lr_scheduler_configs:
@@ -463,6 +574,8 @@ def run(cfg):
     ]
     if OmegaConf.select(cfg, "grid_mask_probe.enabled", default=False):
         callbacks.append(GridMaskProbeCallback(cfg, run_dir))
+    if OmegaConf.select(cfg, "queue_probe.enabled", default=False):
+        callbacks.append(QueueProbeCallback(cfg, run_dir))
 
     trainer = pl.Trainer(
         **cfg.trainer,

@@ -29,6 +29,7 @@ def main(cfg: DictConfig):
   keys["pixels"] = { "image": True }
   keys["tetris_grid_mask"] = { "image": True }
   keys["tetris_mino_mask"] = { "image": True }
+  keys["tetris_queue"] = {}
   keys["action"] = {}
   keys["ep_len"] = {}
   keys["ep_idx"] = {}
@@ -88,6 +89,7 @@ def main(cfg: DictConfig):
 
         data["tetris_grid_mask"].append((env.grid != 0).astype(np.uint8))
         data["tetris_mino_mask"].append(env.mino_mask.astype(np.uint8))
+        data["tetris_queue"].append(env.queue.astype(np.uint8))
 
         dyn = env.dynamics
         data["state_placed_grid"].append(dyn.grid.copy())

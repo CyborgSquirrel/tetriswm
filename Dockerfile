@@ -85,6 +85,7 @@ uv pip sync requirements.lock
 # NOTE: outdated `datasets` gets installed for some reason, so forcefully
 # upgrading it
 uv pip install --upgrade datasets
+uv pip install 'git+https://github.com/CyborgSquirrel/stable-worldmodel.git@patched'
 EOF
 
 # Copy the rest of the application

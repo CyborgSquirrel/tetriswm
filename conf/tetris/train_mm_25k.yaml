@@ -1,0 +1,14 @@
+out: tetris_train_mm_25k
+traj_num: 25000
+traj_len: 1000
+seed: 42
+remove_actions: []
+
+tetris:
+  width: 8
+  height: 12
+  render_size: 126
+  queue_len: 5
+  mino_generator:
+    _target_: tetris.tetris.BagGenerator
+    minoes: [I, L, J, O, Z, S, T]

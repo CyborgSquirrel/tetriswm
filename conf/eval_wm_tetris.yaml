@@ -1,0 +1,26 @@
+defaults:
+  - solver: beam_search
+  - _self_
+
+checkpoint: ???  # path to world model checkpoint (e.g. model_epoch_99_object.ckpt)
+
+tetris:
+  width: 8
+  height: 12
+  render_size: 126
+  queue_len: 0
+  mino_generator:
+    _target_: tetris.tetris.BagGenerator
+    minoes: [I]
+
+plan_config:
+  horizon: 5
+  receding_horizon: 1
+  action_block: 1
+
+max_steps: 500
+num_episodes: 5
+seed: 42
+device: cuda
+
+subdir: ${now:%s}_${hydra:job.id}

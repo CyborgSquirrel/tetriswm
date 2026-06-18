@@ -14,6 +14,7 @@ data:
       - pixels
       - action
       - tetris_grid_mask
+      - tetris_queue
     keys_to_cache:
       - action
 
@@ -106,6 +107,20 @@ grid_mask_probe:
   checkpoint_interval: ${checkpoint_interval}
   reset_interval: null
   preview_images: 8
+  model:
+    type: linear
+    hidden_dim: 512
+    num_layers: 2
+  optimizer:
+    lr: 1e-3
+    weight_decay: 1e-4
+
+queue_probe:
+  enabled: ${eval:'${tetris.tetris.queue_len} > 0'}
+  queue_len: ${tetris.tetris.queue_len}
+  num_classes: 7
+  checkpoint_interval: ${checkpoint_interval}
+  reset_interval: null
   model:
     type: linear
     hidden_dim: 512

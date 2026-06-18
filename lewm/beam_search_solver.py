@@ -29,14 +29,13 @@ class BeamSearchSolver:
     def __init__(
         self,
         model: Costable,
-        total_steps: int,
         beam_width: int = 10,
         batch_size: int = 1,
         device: str | torch.device = "cpu",
         seed: int = 1234,
+        lazy: bool = True,
     ) -> None:
         self.model = model.to(device)
-        self.total_steps = total_steps
         self.beam_width = beam_width
         self.batch_size = batch_size
         self.device = device
@@ -45,6 +44,8 @@ class BeamSearchSolver:
         self._n_actions = None
         self._config = None
         self._configured = False
+
+        self.lazy = lazy
 
         # self.step_idx = 0
 
@@ -131,7 +132,8 @@ class BeamSearchSolver:
             beam_emb_hist = init_emb
             beam_act_emb_hist = torch.zeros(bs, 0, A_emb, device=device)
             beam_act_seqs = torch.zeros(bs, 0, n_actions, device=device)
-            beam_min_cost = torch.full((bs,), torch.inf, device=device)
+            if self.lazy:
+                beam_min_cost = torch.full((bs,), torch.inf, device=device)
 
             for depth in range(1, plan_steps + 1):
                 n_beams = beam_emb_hist.shape[0]
@@ -141,7 +143,8 @@ class BeamSearchSolver:
                 emb_exp = repeat(beam_emb_hist, "b t d -> (b a) t d", a=n_actions)
                 act_emb_exp = repeat(beam_act_emb_hist, "b t d -> (b a) t d", a=n_actions)
                 act_seq_exp = repeat(beam_act_seqs, "b t d -> (b a) t d", a=n_actions)
-                min_cost_exp = repeat(beam_min_cost, "b -> (b a)", a=n_actions)
+                if self.lazy:
+                    min_cost_exp = repeat(beam_min_cost, "b -> (b a)", a=n_actions)
 
                 # Append new action embedding and one-hot for each candidate
                 new_act_emb = repeat(all_act_emb, "a d -> (b a) 1 d", b=n_beams)
@@ -156,8 +159,9 @@ class BeamSearchSolver:
 
                 # MSE cost against goal embedding
                 costs = (next_emb - goal_last).pow(2).sum((-1, -2))  # (bs)
-                costs = torch.minimum(min_cost_exp, costs)
-                min_cost_exp = costs
+                if self.lazy:
+                    costs = torch.minimum(min_cost_exp, costs)
+                    min_cost_exp = costs
 
                 # Prune to top-K beams
                 K = min(beam_width, n_cands)
@@ -174,7 +178,8 @@ class BeamSearchSolver:
                 beam_act_emb_hist = act_emb_full[topk_idx]
                 beam_act_seqs = act_seq_full[topk_idx]
 
-                beam_min_cost = min_cost_exp[topk_idx]
+                if self.lazy:
+                    beam_min_cost = min_cost_exp[topk_idx]
 
             # Best action sequence for this batch: (bs, plan_depth, n_actions)
             all_best.append(beam_act_seqs[0].cpu())
