@@ -34,6 +34,7 @@ class BeamSearchSolver:
         device: str | torch.device = "cpu",
         seed: int = 1234,
         lazy: bool = True,
+        total_steps = None,
     ) -> None:
         self.model = model.to(device)
         self.beam_width = beam_width
@@ -47,7 +48,8 @@ class BeamSearchSolver:
 
         self.lazy = lazy
 
-        # self.step_idx = 0
+        self.total_steps = total_steps
+        self.step_idx = 0
 
     def configure(self, *, action_space: gym.Space, n_envs: int, config: Any) -> None:
         self._n_envs = n_envs
@@ -85,11 +87,12 @@ class BeamSearchSolver:
             dict with 'actions' key of shape (n_envs, receding_horizon, n_actions).
         """
 
-        # prev_step_idx, self.step_idx = self.step_idx, self.step_idx + self._config.receding_horizon
-        # plan_step_idx = min(self.step_idx + self._config.horizon - self._config.receding_horizon, self.total_steps-1)
-        # plan_steps = plan_step_idx - prev_step_idx
-
-        plan_steps = self.horizon
+        if self.total_steps is not None:
+            prev_step_idx, self.step_idx = self.step_idx, self.step_idx + self._config.receding_horizon
+            plan_step_idx = min(self.step_idx + self._config.horizon - self._config.receding_horizon, self.total_steps-1)
+            plan_steps = plan_step_idx - prev_step_idx
+        else:
+            plan_steps = self.horizon
 
         n_envs = self._n_envs
         n_actions = self._n_actions

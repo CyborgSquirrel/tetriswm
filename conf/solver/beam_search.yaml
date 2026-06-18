@@ -5,3 +5,4 @@ batch_size: 1
 device: ${oc.select:device,cpu}
 seed: ${seed}
 lazy: ???
+total_steps: ${oc.select:eval.goal_offset_steps,null}
