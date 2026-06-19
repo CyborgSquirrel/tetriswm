@@ -51,6 +51,9 @@ def get_dataset(cfg, dataset_name):
         keys_to_cache=cfg.dataset.keys_to_cache,
         cache_dir=dataset_path,
     )
+    for key in OmegaConf.select(cfg, "dataset.keys_to_skip", default=[]):
+        if key in dataset._keys:
+            dataset._keys.remove(key)
     return dataset
 
 @hydra.main(version_base=None, config_path="../conf", config_name="eval_pusht")

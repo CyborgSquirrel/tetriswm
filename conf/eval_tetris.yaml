@@ -22,6 +22,8 @@ dataset:
   # stats: ${eval.dataset_name}
   keys_to_cache:
     - action
+  keys_to_skip:
+    - tetris_queue # can be zero sized sometimes
 
 seed: 42
 policy: random
