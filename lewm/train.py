@@ -246,6 +246,23 @@ def set_eval(model: nn.Module):
         model.train(training)
 
 
+@ctl.contextmanager
+def _rng_checkpoint():
+    cpu = torch.get_rng_state()
+    cuda = [torch.cuda.get_rng_state(i) for i in range(torch.cuda.device_count())] if torch.cuda.is_available() else []
+    yield
+    torch.set_rng_state(cpu)
+    for i, s in enumerate(cuda):
+        torch.cuda.set_rng_state(s, i)
+
+
+def _split_batch(batch, i, sub_size, b):
+    return {
+        k: v[i * sub_size:(i + 1) * sub_size] if (isinstance(v, torch.Tensor) and v.shape[0] == b) else v
+        for k, v in batch.items()
+    }
+
+
 def lejepa_forward(self, batch, stage, cfg):
     """encode observations, predict next states, compute losses."""
 
@@ -266,25 +283,79 @@ def lejepa_forward(self, batch, stage, cfg):
     # Replace NaN values with 0 (occurs at sequence boundaries)
     # batch["action"] = torch.nan_to_num(batch["action"], 0.0)
 
-    output = self.model.encode(batch)
+    n_splits = OmegaConf.select(cfg, "big_batch_accum.n_splits", default=1)
 
-    emb = output["emb"]  # (B, T, D)
-    act_emb = output["act_emb"]
+    if n_splits > 1 and stage == "fit":
+        _big_batch = True
 
-    ctx_emb = emb[:, :ctx_len]  # (B, ctx_len, D_ctx_emb)
-    ctx_act = act_emb[:, :ctx_len]  # (B, ctx_len, D_act_emb)
+        sub_size = b // n_splits
+        # Precompute sub-batch embeddings no_grad (matching sub-batch size for batchnorm consistency),
+        # then restore RNG so the grad passes see the same dropout masks
+        sub_embs_cache = []
+        with _rng_checkpoint(), torch.no_grad():
+            for i in range(n_splits):
+                sub_batch = _split_batch(batch, i, sub_size, b)
+                sub_embs_cache.append(self.model.encode(sub_batch)["emb"])
 
-    tgt_emb = emb[:, n_preds:]  # label (B, n_preds, D_ctx_emb)
-    pred_emb = self.model.predict(ctx_emb, ctx_act)  # pred (B, n_preds, D_ctx_emb)
+        total_pred_loss = torch.tensor(0., device=sub_embs_cache[0].device)
+        total_sigreg_loss = torch.tensor(0., device=sub_embs_cache[0].device)
 
-    # LeWM loss
-    output["pred_loss"] = (pred_emb - tgt_emb).pow(2).mean()
-    if lambd > 0:
-        output["sigreg_loss"] = self.sigreg(emb.transpose(0, 1))
+        for i in range(n_splits):
+            sub_batch = _split_batch(batch, i, sub_size, b)
+            sub_out = self.model.encode(sub_batch)
+            sub_emb = sub_out["emb"]
+            sub_act_emb = sub_out["act_emb"]
+
+            sub_ctx_emb = sub_emb[:, :ctx_len]
+            sub_ctx_act = sub_act_emb[:, :ctx_len]
+            sub_tgt_emb = sub_emb[:, n_preds:]
+            sub_pred_emb = self.model.predict(sub_ctx_emb, sub_ctx_act)
+
+            pred_loss = (sub_pred_emb - sub_tgt_emb).pow(2).mean()
+            loss = pred_loss
+
+            if lambd > 0:
+                # Splice the with-grad sub_emb into the cached full-batch tensor so
+                # SIGReg sees full-batch statistics but gradients flow only through sub_emb
+                emb_for_sigreg = torch.cat(
+                    sub_embs_cache[:i] + [sub_emb] + sub_embs_cache[i + 1:], dim=0
+                )
+                sigreg_loss = self.sigreg(emb_for_sigreg.transpose(0, 1))
+                loss = loss + lambd * sigreg_loss
+                total_sigreg_loss = total_sigreg_loss + sigreg_loss.detach()
+
+            total_pred_loss = total_pred_loss + pred_loss.detach()
+            self.manual_backward(loss / n_splits)
+
+        output = {}
+        output["emb"] = torch.cat(sub_embs_cache, dim=0)  # (B, T, D), no_grad
+        output["pred_loss"] = total_pred_loss / n_splits
+        if lambd > 0:
+            output["sigreg_loss"] = total_sigreg_loss / n_splits
+    else:
+        _big_batch = False
+
+        output = self.model.encode(batch)
+
+        emb = output["emb"]  # (B, T, D)
+        act_emb = output["act_emb"]
+
+        ctx_emb = emb[:, :ctx_len]  # (B, ctx_len, D_ctx_emb)
+        ctx_act = act_emb[:, :ctx_len]  # (B, ctx_len, D_act_emb)
+
+        tgt_emb = emb[:, n_preds:]  # label (B, n_preds, D_ctx_emb)
+        pred_emb = self.model.predict(ctx_emb, ctx_act)  # pred (B, n_preds, D_ctx_emb)
+
+        output["pred_loss"] = (pred_emb - tgt_emb).pow(2).mean()
+        if lambd > 0:
+            output["sigreg_loss"] = self.sigreg(emb.transpose(0, 1))
 
     # Loss balancing
     pred_loss_mul = 1
     if OmegaConf.select(cfg, "loss_balancing.enabled", default=False):
+        if _big_batch:
+            raise RuntimeError("Unsupported")
+
         alpha = cfg.loss_balancing.alpha
         mul = cfg.loss_balancing.mul
 
@@ -317,10 +388,10 @@ def lejepa_forward(self, batch, stage, cfg):
         logs[f"{stage}/mean_emb_l2"] = ((emb_flat - emb_flat_mean) ** 2).mean().detach()
 
     # Action ranking
-    with torch.no_grad(), set_eval(self.model):
-        if (   (stage == "validate" and OmegaConf.select(cfg, "action_rank.enabled_val", default=False))
-            or (stage == "fit"      and OmegaConf.select(cfg, "action_rank.enabled_train", default=False))
-        ):
+    if (   (stage == "validate" and OmegaConf.select(cfg, "action_rank.enabled_val", default=False))
+        or (stage == "fit"      and OmegaConf.select(cfg, "action_rank.enabled_train", default=False))
+    ):
+        with torch.no_grad(), set_eval(self.model):
             ar_acts = torch.tensor(OmegaConf.to_container(cfg.action_rank.actions, resolve=True), dtype=torch.float32)
             ar_act_num = len(ar_acts)
 
@@ -359,7 +430,12 @@ def lejepa_forward(self, batch, stage, cfg):
     self.log_dict(logs, on_step=True, sync_dist=True)
 
     # NOTE: This has to happen _after_ logging to wandb.
-    output["loss"] = self.rescale_loss_for_grad_acc(output["loss"])
+    if _big_batch:
+        # All sub-batches already backpropped in the loop above; return a leaf zero so
+        # training_step's manual_backward is a no-op w.r.t. model parameters
+        output["loss"] = torch.zeros([], device=output["emb"].device, requires_grad=True)
+    else:
+        output["loss"] = self.rescale_loss_for_grad_acc(output["loss"])
 
     return output
 
