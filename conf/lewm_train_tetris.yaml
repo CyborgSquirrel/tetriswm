@@ -39,7 +39,8 @@ patch_size: 14
 encoder_scale: tiny
 dump_object: True
 
-big_batch_accum.n_splits: 1
+big_batch_accum:
+  n_splits: 1
 
 trainer:
   default_root_dir: outputs
