@@ -292,7 +292,7 @@ def lejepa_forward(self, batch, stage, cfg):
         # Precompute sub-batch embeddings no_grad (matching sub-batch size for batchnorm consistency),
         # then restore RNG so the grad passes see the same dropout masks
         sub_embs_cache = []
-        with _rng_checkpoint(), torch.no_grad():
+        with torch.no_grad():
             for i in range(n_splits):
                 sub_batch = _split_batch(batch, i, sub_size, b)
                 sub_embs_cache.append(self.model.encode(sub_batch)["emb"])
