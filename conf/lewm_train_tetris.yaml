@@ -41,7 +41,6 @@ dump_object: True
 
 big_batch_accum:
   n_splits: 1
-  checkpoint_sigreg: False
 
 trainer:
   default_root_dir: outputs

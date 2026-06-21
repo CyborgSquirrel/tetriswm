@@ -317,19 +317,10 @@ def lejepa_forward(self, batch, stage, cfg):
             loss = pred_loss
 
             if lambd > 0:
-                # Splice the with-grad sub_emb into the cached full-batch tensor so
-                # SIGReg sees full-batch statistics but gradients flow only through sub_emb
-                if OmegaConf.select(cfg, "big_batch_accum.checkpoint_sigreg", default=False):
-                    # cat inside the checkpoint so neither emb_for_sigreg nor x_t are
-                    # held in memory between forward and backward
-                    def _sigreg(embs):
-                        return self.sigreg(torch.cat(list(embs), dim=0).transpose(0, 1), A=A)
-                    sigreg_loss = torch.utils.checkpoint.checkpoint(
-                        _sigreg, [*sub_embs_cache[:i], sub_emb, *sub_embs_cache[i + 1:]], use_reentrant=False
-                    )
-                else:
-                    all_embs = sub_embs_cache[:i] + [sub_emb] + sub_embs_cache[i + 1:]
-                    sigreg_loss = self.sigreg(torch.cat(all_embs, dim=0).transpose(0, 1), A=A)
+                sigreg_loss = self.sigreg([
+                    a.transpose(0, 1) for a in
+                    [*sub_embs_cache[:i], sub_emb, *sub_embs_cache[i + 1:]]
+                ], A=A)
                 loss = loss + lambd * sigreg_loss
                 total_sigreg_loss = total_sigreg_loss + sigreg_loss.detach()
 
