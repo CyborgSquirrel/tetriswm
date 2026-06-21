@@ -31,12 +31,19 @@ class SIGReg(torch.nn.Module):
         if A is None:
             A = torch.randn(proj.size(-1), self.num_proj, device=proj.device)
             A = F.normalize(A, p=2, dim=0)
-        # A = A.div_(A.norm(p=2, dim=0))
+
+        if not isinstance(proj, list):
+            proj = [proj]
+
         # compute the epps-pulley statistic
-        x_t = (proj @ A).unsqueeze(-1) * self.t
-        err = (x_t.cos().mean(-3) - self.phi).square() + x_t.sin().mean(-3).square()
-        statistic = (err @ self.weights) * proj.size(-2)
-        return statistic.mean() # average over projections and time
+        statistic_acc = torch.tensor(0., device=proj[0].device)
+        for p in proj:
+            x_t = (p @ A).unsqueeze(-1) * self.t
+            err = (x_t.cos().mean(-3) - self.phi).square() + x_t.sin().mean(-3).square()
+            statistic = (err @ self.weights) * p.size(-2)
+            statistic_acc += statistic.mean() # average over projections and time
+        statistic_acc /= len(proj)
+        return statistic_acc
     
 class FeedForward(nn.Module):
     """FeedForward network used in Transformers"""
