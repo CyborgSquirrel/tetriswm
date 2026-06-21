@@ -320,7 +320,13 @@ def lejepa_forward(self, batch, stage, cfg):
                 emb_for_sigreg = torch.cat(
                     sub_embs_cache[:i] + [sub_emb] + sub_embs_cache[i + 1:], dim=0
                 )
-                sigreg_loss = self.sigreg(emb_for_sigreg.transpose(0, 1))
+                sigreg_input = emb_for_sigreg.transpose(0, 1)
+                if OmegaConf.select(cfg, "big_batch_accum.checkpoint_sigreg", default=False):
+                    sigreg_loss = torch.utils.checkpoint.checkpoint(
+                        self.sigreg, sigreg_input, use_reentrant=False
+                    )
+                else:
+                    sigreg_loss = self.sigreg(sigreg_input)
                 loss = loss + lambd * sigreg_loss
                 total_sigreg_loss = total_sigreg_loss + sigreg_loss.detach()
 
