@@ -289,8 +289,7 @@ def lejepa_forward(self, batch, stage, cfg):
         _big_batch = True
 
         sub_size = b // n_splits
-        # Precompute sub-batch embeddings no_grad (matching sub-batch size for batchnorm consistency),
-        # then restore RNG so the grad passes see the same dropout masks
+        # Precompute sub-batch embeddings no_grad (matching sub-batch size for batchnorm consistency)
         sub_embs_cache = []
         with torch.no_grad():
             for i in range(n_splits):
@@ -299,6 +298,9 @@ def lejepa_forward(self, batch, stage, cfg):
 
         total_pred_loss = torch.tensor(0., device=sub_embs_cache[0].device)
         total_sigreg_loss = torch.tensor(0., device=sub_embs_cache[0].device)
+
+        A = torch.randn(sub_embs_cache[0].size(-1), self.sigreg.num_proj, device=self.device)
+        A = F.normalize(A, p=2, dim=0)
 
         for i in range(n_splits):
             sub_batch = _split_batch(batch, i, sub_size, b)
@@ -317,16 +319,17 @@ def lejepa_forward(self, batch, stage, cfg):
             if lambd > 0:
                 # Splice the with-grad sub_emb into the cached full-batch tensor so
                 # SIGReg sees full-batch statistics but gradients flow only through sub_emb
-                emb_for_sigreg = torch.cat(
-                    sub_embs_cache[:i] + [sub_emb] + sub_embs_cache[i + 1:], dim=0
-                )
-                sigreg_input = emb_for_sigreg.transpose(0, 1)
                 if OmegaConf.select(cfg, "big_batch_accum.checkpoint_sigreg", default=False):
+                    # cat inside the checkpoint so neither emb_for_sigreg nor x_t are
+                    # held in memory between forward and backward
+                    def _sigreg(embs):
+                        return self.sigreg(torch.cat(list(embs), dim=0).transpose(0, 1), A=A)
                     sigreg_loss = torch.utils.checkpoint.checkpoint(
-                        self.sigreg, sigreg_input, use_reentrant=False
+                        _sigreg, [*sub_embs_cache[:i], sub_emb, *sub_embs_cache[i + 1:]], use_reentrant=False
                     )
                 else:
-                    sigreg_loss = self.sigreg(sigreg_input)
+                    all_embs = sub_embs_cache[:i] + [sub_emb] + sub_embs_cache[i + 1:]
+                    sigreg_loss = self.sigreg(torch.cat(all_embs, dim=0).transpose(0, 1), A=A)
                 loss = loss + lambd * sigreg_loss
                 total_sigreg_loss = total_sigreg_loss + sigreg_loss.detach()
 

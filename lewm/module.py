@@ -22,13 +22,15 @@ class SIGReg(torch.nn.Module):
         self.register_buffer("phi", window)
         self.register_buffer("weights", weights * window)
 
-    def forward(self, proj):
+    def forward(self, proj, *, A=None):
         """
         proj: (T, B, D)
+        A: optional (D, num_proj) projection matrix; sampled fresh if not provided
         """
         # sample random projections
-        A = torch.randn(proj.size(-1), self.num_proj, device=proj.device)
-        A = F.normalize(A, p=2, dim=0)
+        if A is None:
+            A = torch.randn(proj.size(-1), self.num_proj, device=proj.device)
+            A = F.normalize(A, p=2, dim=0)
         # A = A.div_(A.norm(p=2, dim=0))
         # compute the epps-pulley statistic
         x_t = (proj @ A).unsqueeze(-1) * self.t
