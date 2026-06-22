@@ -37,13 +37,19 @@ class SIGReg(torch.nn.Module):
 
         # compute the epps-pulley statistic
         statistic_acc = torch.tensor(0., device=proj[0].device)
+        err0 = []
+        err1 = []
         for p in proj:
+            # (T, B, num_proj, knots)
             x_t = (p @ A).unsqueeze(-1) * self.t
-            err = (x_t.cos().mean(-3) - self.phi).square() + x_t.sin().mean(-3).square()
-            statistic = (err @ self.weights) * p.size(-2)
-            statistic_acc += statistic.mean() # average over projections and time
-        statistic_acc /= len(proj)
-        return statistic_acc
+            err0.append(x_t.cos().mean(-3))
+            err1.append(x_t.sin().mean(-3))
+        err = (
+              (torch.mean(torch.stack(err0), dim=-1) - self.phi).square()
+            + (torch.mean(torch.stack(err1), dim=-1)           ).square()
+        )
+        statistic = (err @ self.weights) * proj[0].size(-2)
+        return statistic.mean()  # average over projections and time
     
 class FeedForward(nn.Module):
     """FeedForward network used in Transformers"""
