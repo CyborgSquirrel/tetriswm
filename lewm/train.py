@@ -302,7 +302,7 @@ def lejepa_forward(self, batch, stage, cfg):
     if n_splits > 1 and stage == "fit":
         _big_batch = True
 
-        A = torch.randn(sub_embs_cache[0].size(-1), self.sigreg.num_proj, device=self.device)
+        A = torch.randn(cfg.wm.embed_dim, self.sigreg.num_proj, device=self.device)
         A = F.normalize(A, p=2, dim=0)
 
         sub_size = b // n_splits

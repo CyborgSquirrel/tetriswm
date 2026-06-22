@@ -45,8 +45,8 @@ class SIGReg(torch.nn.Module):
             err0.append(x_t.cos().mean(-3))
             err1.append(x_t.sin().mean(-3))
         err = (
-              (torch.mean(torch.stack(err0), dim=-1) - self.phi).square()
-            + (torch.mean(torch.stack(err1), dim=-1)           ).square()
+              (torch.mean(torch.stack(err0), dim=0) - self.phi).square()
+            + (torch.mean(torch.stack(err1), dim=0)           ).square()
         )
         statistic = (err @ self.weights) * proj[0].size(-2)
         return statistic.mean()  # average over projections and time
