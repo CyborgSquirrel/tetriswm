@@ -1,6 +1,7 @@
 defaults:
   - launcher: local
   - solver: cem
+  - tetris: ???
   - _self_
 
 world:
@@ -9,16 +10,10 @@ world:
   max_episode_steps: ??? # set to 2 * eval.eval_budget in eval.py
   history_size: 1
   frame_skip: 1
-  tetris_cfg:
-    width: 8
-    height: 12
-    render_size: 126
-    queue_len: 0
-    mino_generator:
-      _target_: tetris.tetris.BagGenerator
-      minoes: [I]
+  tetris_cfg: ${tetris.tetris}
 
 dataset:
+  name: ${tetris.out}
   # stats: ${eval.dataset_name}
   keys_to_cache:
     - action
@@ -59,6 +54,10 @@ eval:
           value: state_mino_rotations
         mino_tile_idx:
           value: state_mino_tile_idx
+        mino_queue:
+          value: state_mino_queue
+        rng_bytes:
+          value: state_rng_bytes
     - method: _set_goal_state
       args:
         goal_grid:

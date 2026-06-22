@@ -125,8 +125,11 @@ class TetrisEnv(gym.Env):
         mino_origin,
         mino_rotations,
         mino_tile_idx,
+        mino_queue=None,
+        rng_bytes=None,
     ):
         from tetris.tetris import Mino
+        from collections import deque as Deque
         dyn = self._tetris.dynamics
         dyn.grid = np.asarray(placed_grid).astype(np.uint8).copy()
 
@@ -137,6 +140,12 @@ class TetrisEnv(gym.Env):
         mino.rotations = int(mino_rotations)
         mino.tile = TILE_SET.oid_to_obj[int(mino_tile_idx)]
         dyn.current = mino
+
+        if mino_queue is not None:
+            dyn.queue = Deque(int(x) for x in mino_queue)
+
+        if rng_bytes is not None:
+            dyn.mino_generator._deserialize(bytes(rng_bytes))
 
         dyn._update_parent()
 

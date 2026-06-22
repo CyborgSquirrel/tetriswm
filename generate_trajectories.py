@@ -41,6 +41,8 @@ def main(cfg: DictConfig):
   keys["state_mino_origin"] = {}
   keys["state_mino_rotations"] = {}
   keys["state_mino_tile_idx"] = {}
+  keys["state_mino_queue"] = {}
+  keys["state_rng_bytes"] = {}
 
   # Write to HDF5 file
   with ctl.ExitStack() as stack:
@@ -98,6 +100,8 @@ def main(cfg: DictConfig):
         data["state_mino_origin"].append(dyn.current.origin.astype(np.int16))
         data["state_mino_rotations"].append(np.int16(dyn.current.rotations))
         data["state_mino_tile_idx"].append(np.int16(dyn.tetris.tile_set.obj_to_oid[dyn.current.tile]))
+        data["state_mino_queue"].append(np.array(dyn.queue, dtype=np.uint8))
+        data["state_rng_bytes"].append(np.frombuffer(dyn.mino_generator._serialize(), dtype=np.uint8))
 
         # TODO: Le-WM actions seem to range between [-1;1] in the training
         # datasets, maybe do the same here.

@@ -1,5 +1,6 @@
 import enum
 import random
+import struct
 import dataclasses as dc
 import stable_pretraining as spt
 from einops import rearrange, pack
@@ -201,6 +202,45 @@ class GameState(enum.IntEnum):
     OVER = enum.auto()
 
 
+# PCG64: state and inc are 128-bit ints; split into lo/hi uint64. has_uint32 is
+# a 1-byte flag for a buffered uint32, uinteger holds the buffered value.
+_PCG64_STRUCT = struct.Struct('<QQQQBI')
+
+
+def rng_save_state(rng: np.random.Generator) -> bytes:
+    s = rng.bit_generator.state
+    state, inc = s['state']['state'], s['state']['inc']
+    return _PCG64_STRUCT.pack(
+        state & 0xFFFFFFFFFFFFFFFF, state >> 64,
+        inc   & 0xFFFFFFFFFFFFFFFF, inc   >> 64,
+        s['has_uint32'],
+        s['uinteger'],
+    )
+
+
+def rng_restore_state(rng: np.random.Generator, data: bytes):
+    state_lo, state_hi, inc_lo, inc_hi, has_uint32, uinteger = _PCG64_STRUCT.unpack(data)
+    rng.bit_generator.state = {
+        'bit_generator': 'PCG64',
+        'state': {
+            'state': state_lo | (state_hi << 64),
+            'inc':   inc_lo   | (inc_hi   << 64),
+        },
+        'has_uint32': has_uint32,
+        'uinteger':   uinteger,
+    }
+
+
+def test_rng_save_restore():
+    rng = np.random.default_rng(42)
+    rng.bytes(10)
+    state = rng_save_state(rng)
+    before = rng.bytes(100)
+    rng_restore_state(rng, state)
+    after = rng.bytes(100)
+    assert before == after
+
+
 def rng_derive_seed(rng: np.random.Generator | random.Random):
     if isinstance(rng, np.random.Generator):
         b = rng.bytes(4)
@@ -237,6 +277,18 @@ class BagGenerator:
             self.rng.shuffle(self.bag)
         mino_oid = self.bag.pop()
         return mino_oid
+
+    def _serialize(self) -> bytes:
+        fmt = struct.Struct(f'<B{len(self.minoes)}B')
+        padding = [255] * (len(self.minoes) - len(self.bag))
+        bag_bytes = fmt.pack(len(self.bag), *self.bag, *padding)
+        return rng_save_state(self.rng) + bag_bytes
+
+    def _deserialize(self, data: bytes):
+        fmt = struct.Struct(f'<B{len(self.minoes)}B')
+        rng_restore_state(self.rng, data[:_PCG64_STRUCT.size])
+        bag_len, *bag_padded = fmt.unpack(data[_PCG64_STRUCT.size:])
+        self.bag = list(bag_padded[:bag_len])
 
 
 class GtDynamics:
