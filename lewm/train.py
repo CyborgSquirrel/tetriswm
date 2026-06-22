@@ -246,14 +246,28 @@ def set_eval(model: nn.Module):
         model.train(training)
 
 
-@ctl.contextmanager
-def _rng_checkpoint():
+def get_rng_state():
     cpu = torch.get_rng_state()
-    cuda = [torch.cuda.get_rng_state(i) for i in range(torch.cuda.device_count())] if torch.cuda.is_available() else []
-    yield
+    if not torch.cuda.is_available():
+        cuda = []
+    else:
+        cuda = [
+            torch.cuda.get_rng_state(i) for i in range(torch.cuda.device_count())
+        ]
+    return cpu, cuda
+
+
+def set_rng_state(cpu, cuda):
     torch.set_rng_state(cpu)
     for i, s in enumerate(cuda):
         torch.cuda.set_rng_state(s, i)
+
+
+@ctl.contextmanager
+def _rng_checkpoint():
+    state = get_rng_state()
+    yield
+    set_rng_state(*state)
 
 
 def _split_batch(batch, i, sub_size, b):
@@ -288,21 +302,28 @@ def lejepa_forward(self, batch, stage, cfg):
     if n_splits > 1 and stage == "fit":
         _big_batch = True
 
+        A = torch.randn(sub_embs_cache[0].size(-1), self.sigreg.num_proj, device=self.device)
+        A = F.normalize(A, p=2, dim=0)
+
         sub_size = b // n_splits
         # Precompute sub-batch embeddings no_grad (matching sub-batch size for batchnorm consistency)
         sub_embs_cache = []
+        rng_states = []
         with torch.no_grad():
             for i in range(n_splits):
+                rng_states.append(get_rng_state())
                 sub_batch = _split_batch(batch, i, sub_size, b)
                 sub_embs_cache.append(self.model.encode(sub_batch)["emb"])
+
+                # scramble RNG state a little
+                torch.randn(100)
 
         total_pred_loss = torch.tensor(0., device=sub_embs_cache[0].device)
         total_sigreg_loss = torch.tensor(0., device=sub_embs_cache[0].device)
 
-        A = torch.randn(sub_embs_cache[0].size(-1), self.sigreg.num_proj, device=self.device)
-        A = F.normalize(A, p=2, dim=0)
+        for i, rng_state in zip(range(n_splits), rng_states):
+            set_rng_state(*rng_state)
 
-        for i in range(n_splits):
             sub_batch = _split_batch(batch, i, sub_size, b)
             sub_out = self.model.encode(sub_batch)
             sub_emb = sub_out["emb"]
