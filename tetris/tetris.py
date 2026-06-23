@@ -12,6 +12,7 @@ from hydra.utils import instantiate
 from tetris import layout
 from tetris import draw
 from collections import deque as Deque
+from utils import rng_derive_seed
 import lewm.jepa
 import lewm.patch_jepa
 import lewm.module
@@ -132,17 +133,16 @@ class Mino:
         tiles = tiles // 2
         tiles = tiles + self.origin
 
-        new = self.copy()
-        new.coords    = np.array(tiles, dtype=np.int32)
-        new.rotations = new_rotations
-        return new
+        self.coords    = np.array(tiles, dtype=np.int32)
+        self.rotations = new_rotations
+
+        return self
 
     def translate(self, delta: tuple[int, int]) -> 'Mino':
         d = np.array(delta, dtype=np.int32)
-        new = self.copy()
-        new.coords += d
-        new.origin += d
-        return new
+        self.coords += d
+        self.origin += d
+        return self
 
 
 class ObjectSet:
@@ -241,17 +241,6 @@ def test_rng_save_restore():
     assert before == after
 
 
-def rng_derive_seed(rng: np.random.Generator | random.Random):
-    if isinstance(rng, np.random.Generator):
-        b = rng.bytes(4)
-    elif isinstance(rng, random.Random):
-        b = rng.randbytes(4)
-    else:
-        raise TypeError()
-    seed = int.from_bytes(b)
-    return seed
-
-
 class BagGenerator:
     def __init__(self, minoes, *, rng: np.random.Generator):
         self.minoes = []
@@ -343,7 +332,7 @@ class GtDynamics:
 
         mino_oid = self.queue.popleft()
         mino = MINO_SET.oid_to_obj[mino_oid].copy()
-        mino = mino.center(self.tetris.width)
+        mino.center(self.tetris.width)
         return mino
 
     def _ensure_current_mino(self):
@@ -386,22 +375,24 @@ class GtDynamics:
                 self._rotate_mino(MinoRotation.RIGHT)
             case Action.MOVE_LEFT:
                 mino = self.current.copy()
-                mino = mino.translate((-1, 0))
+                mino.translate((-1, 0))
                 if not (mino.intersect_grid(self.grid) & MinoIntersection.COLLISION):
                     self.current = mino
             case Action.MOVE_RIGHT:
                 mino = self.current.copy()
-                mino = mino.translate((1, 0))
+                mino.translate((1, 0))
                 if not (mino.intersect_grid(self.grid) & MinoIntersection.COLLISION):
                     self.current = mino
             case Action.MOVE_DOWN:
                 pass  # let gravity handle it
             case Action.HARD_DROP:
                 mino0 = self.current.copy()
+                mino1 = self.current.copy()
                 while True:
-                    mino0, mino1 = mino0.translate((0, 1)), mino0
+                    mino0.translate((0, 1))
                     if mino0.intersect_grid(self.grid) & MinoIntersection.COLLISION:
                         break
+                    mino1.translate((0, 1))
                 self.current = mino1
 
         # Apply gravity

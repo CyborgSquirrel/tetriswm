@@ -1,4 +1,5 @@
 import logging
+import random
 
 import numpy as np
 import h5py
@@ -94,3 +95,14 @@ class Tee:
   def flush(self):
     for f in self.files:
       f.flush()
+
+
+def rng_derive_seed(rng: np.random.Generator | random.Random):
+    if isinstance(rng, np.random.Generator):
+        b = rng.bytes(4)
+    elif isinstance(rng, random.Random):
+        b = rng.randbytes(4)
+    else:
+        raise TypeError()
+    seed = int.from_bytes(b)
+    return seed

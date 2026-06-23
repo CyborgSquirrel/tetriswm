@@ -11,7 +11,7 @@ import h5py
 from tqdm import tqdm
 import hydra
 from omegaconf import DictConfig
-from utils import LazyDataset
+from utils import LazyDataset, rng_derive_seed
 
 log = logging.getLogger(__name__)
 
@@ -73,8 +73,10 @@ def main(cfg: DictConfig):
     for traj_idx in tqdm(range(cfg.traj_num)):
       env = tetris.Tetris.from_config(
         cfg.tetris,
-        rng=np.random.default_rng(tetris.rng_derive_seed(rng)),
+        rng=np.random.default_rng(rng_derive_seed(rng)),
       )
+      policy = hydra.utils.instantiate(cfg.policy)
+      policy._init(env, np.random.default_rng(rng_derive_seed(rng)))
 
       ep_idx = ep_idx_it
       ep_idx_it += 1
@@ -103,14 +105,11 @@ def main(cfg: DictConfig):
         data["state_mino_queue"].append(np.array(dyn.queue, dtype=np.uint8))
         data["state_rng_bytes"].append(np.frombuffer(dyn.mino_generator._serialize(), dtype=np.uint8))
 
-        # TODO: Le-WM actions seem to range between [-1;1] in the training
-        # datasets, maybe do the same here.
-
         # NOTE: Action taken in the current step, leading to the next step.
         action_onehot = np.zeros(len(tetris.Action))
         if step_idx < cfg.traj_len-1:
-          action = rng.choice(actions)
-          action_onehot[action-1] = 1
+          action = policy.step()
+          action_onehot[int(action)-1] = 1
           env.step(action)
 
         data["action"].append(action_onehot)
