@@ -102,8 +102,8 @@ class BeamSearchSolver:
         HS = getattr(model, "history_size", 3)
 
         # Precompute action embeddings for all one-hot actions: (n_actions, A_emb)
-        all_raw = torch.eye(n_actions, device=device)
-        all_trans = model.action_trans(all_raw.unsqueeze(0))   # (1, n_actions, action_dim)
+        all_act_oh = torch.eye(n_actions, device=device)
+        all_trans = model.action_trans(all_act_oh.unsqueeze(0))   # (1, n_actions, action_dim)
         all_act_emb = model.action_encoder(all_trans).squeeze(0)  # (n_actions, A_emb)
         A_emb = all_act_emb.shape[-1]
 
@@ -128,66 +128,80 @@ class BeamSearchSolver:
             goal_emb = model.encode_pixels(goal_pix)  # (bs, 1, D)
             goal_last = goal_emb[:, -1]  # (bs, D)
 
+            # k - number of trajectories kept
+            k = 1
+
             # Beam state:
-            #   beam_emb_hist:     (bs, T_init, D)    -- grows by 1 per depth
-            #   beam_act_emb_hist: (bs, 0, A_emb)     -- grows by 1 per depth
-            #   beam_act_seqs:     (bs, 0, n_actions)  -- one-hot action history
-            beam_emb_hist = init_emb
-            beam_act_emb_hist = torch.zeros(bs, 0, A_emb, device=device)
-            beam_act_seqs = torch.zeros(bs, 0, n_actions, device=device)
+            #   beam_emb_hist:     (bs, k, T_init, D)    -- grows by 1 per depth
+            #   beam_act_emb_hist: (bs, k, 0, A_emb)     -- grows by 1 per depth
+            #   beam_act_seqs:     (bs, k, 0, n_actions)  -- one-hot action history
+            beam_emb_hist = rearrange(init_emb, "b 1 d -> b 1 1 d")
+            beam_act_emb_hist = torch.zeros(bs, 1, 0, A_emb, device=device)
+            beam_act_seqs     = torch.zeros(bs, 1, 0, n_actions, device=device)
             if self.lazy:
-                beam_min_cost = torch.full((bs,), torch.inf, device=device)
+                beam_min_cost = torch.full((bs, 1), torch.inf, device=device)
+
+            k = 1
 
             for depth in range(1, plan_steps + 1):
-                n_beams = beam_emb_hist.shape[0]
-                n_cands = n_beams * n_actions
+                # n_beams = beam_emb_hist.shape[1]
+                # n_cands = n_beams * n_actions
 
                 # Expand each beam by n_actions
-                emb_exp = repeat(beam_emb_hist, "b t d -> (b a) t d", a=n_actions)
-                act_emb_exp = repeat(beam_act_emb_hist, "b t d -> (b a) t d", a=n_actions)
-                act_seq_exp = repeat(beam_act_seqs, "b t d -> (b a) t d", a=n_actions)
+                emb_exp     = repeat(beam_emb_hist    , "b k t d -> b (k a) t d", a=n_actions)
+                act_emb_exp = repeat(beam_act_emb_hist, "b k t d -> b (k a) t d", a=n_actions)
+                act_seq_exp = repeat(beam_act_seqs    , "b k t d -> b (k a) t d", a=n_actions)
                 if self.lazy:
-                    min_cost_exp = repeat(beam_min_cost, "b -> (b a)", a=n_actions)
+                    min_cost_exp = repeat(beam_min_cost, "b k -> b (k a)", a=n_actions)
 
                 # Append new action embedding and one-hot for each candidate
-                new_act_emb = repeat(all_act_emb, "a d -> (b a) 1 d", b=n_beams)
-                new_act_oh = repeat(
-                    torch.eye(n_actions, device=device), "a d -> (b a) 1 d", b=n_beams,
-                )
-                act_emb_full = torch.cat([act_emb_exp, new_act_emb], dim=1)  # (bs, depth, A_emb)
-                act_seq_full = torch.cat([act_seq_exp, new_act_oh], dim=1)   # (bs, depth, n_actions)
+                new_act_emb = repeat(all_act_emb, "a d -> b (k a) 1 d", b=bs, k=k)
+                new_act_oh  = repeat(all_act_oh, "a d -> b (k a) 1 d", b=bs, k=k)
+
+                k *= n_actions
+
+                act_emb_full = torch.cat([act_emb_exp, new_act_emb], dim=2)  # (bs, k, depth, A_emb)
+                act_seq_full = torch.cat([act_seq_exp, new_act_oh ], dim=2)   # (bs, k, depth, n_actions)
 
                 # Single predict step for all candidates
-                next_emb = model.predict(emb_exp[:, -HS:], act_emb_full[:, -HS:])[:, -1:]  # (bs*n_cands, 1, D)
+                emb_exp_flat = rearrange(emb_exp, "b k t d -> (b k) t d")
+                act_emb_full_flat = rearrange(act_emb_full, "b k t d -> (b k) t d")
+
+                # (bs, k*n_cands, 1, D)
+                next_emb_flat = model.predict(
+                    emb_exp_flat     [:, -HS:],
+                    act_emb_full_flat[:, -HS:],
+                )[:, -1:]
+
+                next_emb = rearrange(next_emb_flat, "(b k) t d -> b k t d", b=bs, k=k)
 
                 # MSE cost against goal embedding
-                costs = (next_emb - goal_last).pow(2).sum((-1, -2))  # (bs)
+                costs = (next_emb - rearrange(goal_last, "b d -> b 1 1 d")).pow(2).sum((-1, -2))  # (bs)
                 if self.lazy:
                     costs = torch.minimum(min_cost_exp, costs)
                     min_cost_exp = costs
 
                 # Prune to top-K beams
-                K = min(beam_width, n_cands)
-                _, topk_idx = costs.topk(K, dim=0, largest=False)
-
-                T_cur = emb_exp.shape[1]
+                k = min(beam_width, k)
+                _, topk_idx = costs.topk(k, dim=1, largest=False)
+                b_idx = torch.arange(bs)[..., None]
 
                 # Gather surviving emb hist and append predicted next embedding
-                surv_emb = emb_exp[topk_idx]
-                surv_next = next_emb[topk_idx]
-                beam_emb_hist = torch.cat([surv_emb, surv_next], dim=1)
+                surv_emb = emb_exp[b_idx, topk_idx]
+                surv_next = next_emb[b_idx, topk_idx]
+                beam_emb_hist = torch.cat([surv_emb, surv_next], dim=2)
 
                 # Gather surviving act emb hist and action sequences
-                beam_act_emb_hist = act_emb_full[topk_idx]
-                beam_act_seqs = act_seq_full[topk_idx]
+                beam_act_emb_hist = act_emb_full[b_idx, topk_idx]
+                beam_act_seqs = act_seq_full[b_idx, topk_idx]
 
                 if self.lazy:
-                    beam_min_cost = min_cost_exp[topk_idx]
+                    beam_min_cost = min_cost_exp[b_idx, topk_idx]
 
-            # Best action sequence for this batch: (bs, plan_depth, n_actions)
-            all_best.append(beam_act_seqs[0].cpu())
+            # Best action sequence for this batch: (bs, k, plan_depth, n_actions)
+            all_best.append(beam_act_seqs[:, 0].cpu())
 
-        best_seqs = torch.stack(all_best, dim=0)
+        best_seqs = torch.cat(all_best, dim=0)
 
         print(f"BeamSearchSolver.solve {time.time() - start_time:.3f}s "
               f"(beam_width={beam_width}, depth={plan_steps})")
