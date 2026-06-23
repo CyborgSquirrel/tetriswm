@@ -467,7 +467,10 @@ def run(cfg):
     #########################
 
     dataset = swm.data.HDF5Dataset(**cfg.data.dataset, transform=None)
-    transforms = [get_img_preprocessor(source='pixels', target='pixels', img_size=cfg.img_size)]
+    transforms = []
+
+    if OmegaConf.select(cfg, "normalize_pixels"):
+        transforms.append(get_img_preprocessor(source='pixels', target='pixels', img_size=cfg.img_size))
 
     with open_dict(cfg):
         for col in cfg.data.dataset.keys_to_load:

@@ -38,6 +38,7 @@ img_size: ${tetris.tetris.render_size}
 patch_size: 14
 encoder_scale: tiny
 dump_object: True
+normalize_pixels: True
 
 big_batch_accum:
   n_splits: 1
