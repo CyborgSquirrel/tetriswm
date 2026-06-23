@@ -189,10 +189,10 @@ class BeamSearchSolver:
                 # Gather surviving emb hist and append predicted next embedding
                 surv_emb = emb_exp[b_idx, topk_idx]
                 surv_next = next_emb[b_idx, topk_idx]
-                beam_emb_hist = torch.cat([surv_emb, surv_next], dim=2)
+                beam_emb_hist = torch.cat([surv_emb, surv_next], dim=2)[:, :, -HS:]
 
                 # Gather surviving act emb hist and action sequences
-                beam_act_emb_hist = act_emb_full[b_idx, topk_idx]
+                beam_act_emb_hist = act_emb_full[b_idx, topk_idx][:, :, -HS:]
                 beam_act_seqs = act_seq_full[b_idx, topk_idx]
 
                 if self.lazy:
