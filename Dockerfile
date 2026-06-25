@@ -86,6 +86,7 @@ uv pip sync requirements.lock
 # upgrading it
 uv pip install --upgrade datasets
 uv pip install 'git+https://github.com/CyborgSquirrel/stable-worldmodel.git@patched'
+uv pip install cma==4.4.4
 EOF
 
 # Copy the rest of the application

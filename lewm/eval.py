@@ -1,4 +1,5 @@
 import os
+import math
 import sys
 from pathlib import Path
 
@@ -22,14 +23,19 @@ import stable_worldmodel as swm
 import tetris.gym_env  # noqa: F401 — registers tetris/Tetris-v1 with gymnasium
 
 def img_transform(cfg):
-    transform = transforms.Compose(
-        [
-            transforms.ToImage(),
-            transforms.ToDtype(torch.float32, scale=True),
+    transform = []
+    transform += [
+        transforms.ToImage(),
+        transforms.ToDtype(torch.float32, scale=True),
+    ]
+    if OmegaConf.select(cfg, "normalize_pixels"):
+        transform += [
             transforms.Normalize(**spt.data.dataset_stats.ImageNet),
-            transforms.Resize(size=cfg.eval.img_size),
         ]
-    )
+    transform += [
+        transforms.Resize(size=cfg.eval.img_size),
+    ]
+    transform = transforms.Compose(transform)
     return transform
 
 
@@ -147,8 +153,22 @@ def run(cfg: DictConfig):
 
     print(random_episode_indices)
 
-    eval_episodes = dataset.get_row_data(random_episode_indices)[col_name]
-    eval_start_idx = dataset.get_row_data(random_episode_indices)["step_idx"]
+    def get_row_data(dataset, row_idx: int | list[int]) -> dict:
+        dataset._open()
+        ret = dict()
+        for col_name in dataset._keys:
+            col = dataset.h5_file[col_name]
+            # NOTE(andrei): h5py refuses to slice zero-space datasets, so we end
+            # up needing this hack.
+            if math.prod(col.shape) == 0:
+                col = np.array(col)
+            ret[col_name] = col[row_idx]
+        return ret
+
+    # row_data = dataset.get_row_data(random_episode_indices)
+    row_data = get_row_data(dataset, random_episode_indices)
+    eval_episodes = row_data[col_name]
+    eval_start_idx = row_data["step_idx"]
 
     if len(eval_episodes) < cfg.eval.num_eval:
         raise ValueError("Not enough episodes with sufficient length for evaluation.")

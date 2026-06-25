@@ -22,6 +22,7 @@ dataset:
 
 seed: 42
 policy: random
+normalize_pixels: True
 
 subdir: ${now:%s}_${hydra:job.id}
 

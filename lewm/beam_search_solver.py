@@ -35,6 +35,7 @@ class BeamSearchSolver:
         seed: int = 1234,
         lazy: bool = True,
         total_steps = None,
+        scorer=None,
     ) -> None:
         self.model = model.to(device)
         self.beam_width = beam_width
@@ -47,6 +48,8 @@ class BeamSearchSolver:
         self._configured = False
 
         self.lazy = lazy
+        # Optional callable (bs, k, D) -> (bs, k); if set, replaces goal-MSE cost.
+        self.scorer = scorer
 
         self.total_steps = total_steps
         self.step_idx = 0
@@ -122,11 +125,12 @@ class BeamSearchSolver:
             init_emb = model.encode_pixels(init_pix)
             D_emb = init_emb.shape[-1]
 
-            # Encode goal once.
-            # goal is (bs, H, W, C) — no T dim; add it so encode_pixels sees (bs, 1, H, W, C).
-            goal_pix = info_b["goal"].to(device)
-            goal_emb = model.encode_pixels(goal_pix)  # (bs, 1, D)
-            goal_last = goal_emb[:, -1]  # (bs, D)
+            if self.scorer is None:
+                # Encode goal once.
+                # goal is (bs, H, W, C) — no T dim; add it so encode_pixels sees (bs, 1, H, W, C).
+                goal_pix = info_b["goal"].to(device)
+                goal_emb = model.encode_pixels(goal_pix)  # (bs, 1, D)
+                goal_last = goal_emb[:, -1]  # (bs, D)
 
             # k - number of trajectories kept
             k = 1
@@ -175,8 +179,11 @@ class BeamSearchSolver:
 
                 next_emb = rearrange(next_emb_flat, "(b k) t d -> b k t d", b=bs, k=k)
 
-                # MSE cost against goal embedding
-                costs = (next_emb - rearrange(goal_last, "b d -> b 1 1 d")).pow(2).sum((-1, -2))  # (bs)
+                # Cost: either learned scorer or MSE against goal embedding
+                if self.scorer is not None:
+                    costs = -self.scorer(next_emb[:, :, -1, :])  # (bs, k)
+                else:
+                    costs = (next_emb - rearrange(goal_last, "b d -> b 1 1 d")).pow(2).sum((-1, -2))  # (bs, k)
                 if self.lazy:
                     costs = torch.minimum(min_cost_exp, costs)
                     min_cost_exp = costs
