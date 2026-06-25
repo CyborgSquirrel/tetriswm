@@ -15,6 +15,7 @@ import cma
 import numpy as np
 import torch
 import hydra
+import wandb
 import stable_pretraining as spt
 import stable_worldmodel as swm
 from omegaconf import DictConfig, OmegaConf
@@ -116,6 +117,9 @@ def run(cfg: DictConfig):
     else:
         subdir = Path(".")
 
+    if cfg.wandb.enabled:
+        wandb.init(**cfg.wandb.config, config=OmegaConf.to_container(cfg, resolve=True))
+
     best_score = -np.inf
     best_params = None
     iteration = 0
@@ -140,6 +144,17 @@ def run(cfg: DictConfig):
             best_params = solutions[int(np.argmax(fitnesses))].copy()
             print(f"New best: {best_score:.2f} lines/episode")
 
+        if cfg.wandb.enabled:
+            best_video_tag = f"iter{iteration:04d}_cand{int(np.argmax(fitnesses)):03d}_ep0"
+            wandb.log({
+                "fitness/best": gen_best,
+                "fitness/mean": float(np.mean(fitnesses)),
+                "fitness/min": float(np.min(fitnesses)),
+                "fitness/all_time_best": best_score,
+                "cmaes/sigma": es.sigma,
+                "best_episode": wandb.Video(str(subdir / f"{best_video_tag}.mp4"), fps=10),
+            }, step=iteration)
+
         iteration += 1
         if best_params is not None and iteration % cfg.checkpoint_interval == 0:
             ckpt_path = subdir / f"cmaes_scorer_iter{iteration:04d}.npy"
@@ -150,6 +165,9 @@ def run(cfg: DictConfig):
     out_path = subdir / "cmaes_scorer.npy"
     np.save(out_path, best_params)
     print(f"Best params saved to {out_path}")
+
+    if cfg.wandb.enabled:
+        wandb.finish()
 
 
 if __name__ == "__main__":

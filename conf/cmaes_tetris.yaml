@@ -26,3 +26,12 @@ n_eval_episodes: 1
 
 device: cuda
 subdir: ${now:%s}_${hydra:job.id}
+
+wandb:
+  enabled: true
+  config:
+    entity: andrei-jardan-technical-university-of-munich
+    project: genai-tetris
+    name: cmaes_${tetris.out}
+    id: ${subdir}
+    resume: allow
