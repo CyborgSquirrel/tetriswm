@@ -1,0 +1,28 @@
+defaults:
+  - _self_
+  - tetris: ???
+
+checkpoint: ???  # path to world model checkpoint
+
+tetris_cfg: ${tetris.tetris}
+
+plan_config:
+  horizon: 5
+  receding_horizon: 1
+  action_block: 1
+
+beam_width: 200
+lazy: false
+emb_dim: 192
+
+# CMA-ES settings
+sigma0: 0.5
+max_iter: 500
+checkpoint_interval: 1
+
+# Evaluation settings
+max_steps: 100
+n_eval_episodes: 1
+
+device: cuda
+subdir: ${now:%s}_${hydra:job.id}
