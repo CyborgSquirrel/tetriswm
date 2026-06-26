@@ -23,6 +23,7 @@ checkpoint_interval: 1
 # Evaluation settings
 max_steps: 100
 n_eval_episodes: 1
+consistency_lambda: 0.5
 
 device: cuda
 subdir: ${now:%s}_${hydra:job.id}

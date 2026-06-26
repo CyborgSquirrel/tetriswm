@@ -69,16 +69,19 @@ def run_episode(env, solver, transform, max_steps, device):
     return env._tetris.dynamics.cleared_rows, frames
 
 
-def evaluate(params, emb_dim, solver, env, transform, max_steps, n_episodes, device, video_dir, tag):
+def evaluate(params, emb_dim, solver, env, transform, max_steps, n_episodes, device, video_dir, tag, consistency_lambda):
     import imageio.v2 as imageio
     solver.scorer = make_scorer(params, emb_dim, device)
-    total_lines = 0
+    all_lines = []
     for ep in range(n_episodes):
         lines, frames = run_episode(env, solver, transform, max_steps, device)
-        total_lines += lines
+        all_lines.append(lines)
         video_path = video_dir / f"{tag}_ep{ep}.mp4"
         imageio.mimwrite(str(video_path), frames, fps=10)
-    return total_lines / n_episodes
+    mean_lines = float(np.mean(all_lines))
+    std_lines = float(np.std(all_lines))
+    fitness = mean_lines - consistency_lambda * std_lines
+    return fitness, mean_lines, std_lines
 
 
 @hydra.main(version_base=None, config_path="../conf", config_name="cmaes_tetris")
@@ -126,31 +129,39 @@ def run(cfg: DictConfig):
 
     while not es.stop():
         solutions = es.ask()
-        fitnesses = [
+        results = [
             evaluate(
                 x, emb_dim, solver, env,
                 transform, cfg.max_steps, cfg.n_eval_episodes, device,
                 subdir, tag=f"iter{iteration:04d}_cand{i:03d}",
+                consistency_lambda=cfg.consistency_lambda,
             )
             for i, x in enumerate(solutions)
         ]
-        # CMA-ES minimizes, so negate lines cleared
+        fitnesses, mean_lines_all, std_lines_all = zip(*results)
+        fitnesses = list(fitnesses)
+
+        # CMA-ES minimizes, so negate fitness
         es.tell(solutions, [-f for f in fitnesses])
         es.disp()
 
-        gen_best = max(fitnesses)
+        best_idx = int(np.argmax(fitnesses))
+        gen_best = fitnesses[best_idx]
         if gen_best > best_score:
             best_score = gen_best
-            best_params = solutions[int(np.argmax(fitnesses))].copy()
-            print(f"New best: {best_score:.2f} lines/episode")
+            best_params = solutions[best_idx].copy()
+            print(f"New best: {best_score:.2f} (mean lines: {mean_lines_all[best_idx]:.2f}, std: {std_lines_all[best_idx]:.2f})")
 
         if cfg.wandb.enabled:
-            best_video_tag = f"iter{iteration:04d}_cand{int(np.argmax(fitnesses)):03d}_ep0"
+            best_video_tag = f"iter{iteration:04d}_cand{best_idx:03d}_ep0"
             wandb.log({
                 "fitness/best": gen_best,
                 "fitness/mean": float(np.mean(fitnesses)),
                 "fitness/min": float(np.min(fitnesses)),
                 "fitness/all_time_best": best_score,
+                "lines/best_mean": mean_lines_all[best_idx],
+                "lines/best_std": std_lines_all[best_idx],
+                "lines/pop_mean": float(np.mean(mean_lines_all)),
                 "cmaes/sigma": es.sigma,
                 "best_episode": wandb.Video(str(subdir / f"{best_video_tag}.mp4"), fps=10),
             }, step=iteration)

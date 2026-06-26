@@ -98,11 +98,11 @@ class Tee:
 
 
 def rng_derive_seed(rng: np.random.Generator | random.Random):
-    if isinstance(rng, np.random.Generator):
-        b = rng.bytes(4)
-    elif isinstance(rng, random.Random):
-        b = rng.randbytes(4)
-    else:
-        raise TypeError()
-    seed = int.from_bytes(b)
-    return seed
+  if isinstance(rng, np.random.Generator):
+    b = rng.bytes(4)
+  elif isinstance(rng, random.Random):
+    b = rng.randbytes(4)
+  else:
+    raise TypeError()
+  seed = int.from_bytes(b)
+  return seed
