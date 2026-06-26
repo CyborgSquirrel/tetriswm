@@ -4,6 +4,9 @@ traj_len: 1000
 seed: 42
 remove_actions: []
 
+policy:
+  _target_: tetris_policy.RandomPolicy
+
 tetris:
   width: 8
   height: 12
