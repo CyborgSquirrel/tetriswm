@@ -6,6 +6,7 @@ rank WM predicted embeddings; CMA-ES maximizes lines cleared in the real env.
 
 import os
 import sys
+import math
 from pathlib import Path
 
 os.environ["MUJOCO_GL"] = "egl"
@@ -54,10 +55,35 @@ def make_scorer(params: np.ndarray, emb_dim: int, device):
     return scorer
 
 
-def run_episode(env, solver, transform, max_steps, device):
+class Fitness:
+    def update(self, env):
+        raise NotImplementedError()
+
+    def finish(self):
+        raise NotImplementedError()
+
+
+class CleanFitness(Fitness):
+    def __init__(self):
+        self.value = 0
+
+    def update(self, env):
+        total_tiles = math.prod(env._tetris.grid.shape)
+        empty_tiles = np.sum(env._tetris.grid == 0)
+        empty_prop = empty_tiles / total_tiles
+        self.value += empty_prop ** 2
+
+    def finish(self):
+        pass
+
+
+def run_episode(env, solver, transform, max_steps, fitness, device):
     env.reset()
     frames = []
     for _ in range(max_steps):
+        for f in fitness:
+            f.update(env)
+
         frame = env.render()
         frames.append(frame)
         pixels = transform(frame).unsqueeze(0).unsqueeze(0).to(device)  # (1,1,C,H,W)
@@ -66,6 +92,11 @@ def run_episode(env, solver, transform, max_steps, device):
         _, _, terminated, truncated, _ = env.step(action)
         if terminated or truncated:
             break
+
+    for f in fitness:
+        f.update(env)
+        f.finish()
+
     return env._tetris.dynamics.cleared_rows, frames
 
 
@@ -73,14 +104,18 @@ def evaluate(params, emb_dim, solver, env, transform, max_steps, n_episodes, dev
     import imageio.v2 as imageio
     solver.scorer = make_scorer(params, emb_dim, device)
     all_lines = []
+    all_clean_fitness = []
     for ep in range(n_episodes):
-        lines, frames = run_episode(env, solver, transform, max_steps, device)
+        clean_fitness = CleanFitness()
+        lines, frames = run_episode(env, solver, transform, max_steps, [clean_fitness], device)
         all_lines.append(lines)
+        all_clean_fitness.append(clean_fitness.value)
         video_path = video_dir / f"{tag}_ep{ep}.mp4"
         imageio.mimwrite(str(video_path), frames, fps=10)
     mean_lines = float(np.mean(all_lines))
     std_lines = float(np.std(all_lines))
-    fitness = mean_lines - consistency_lambda * std_lines
+    # fitness = mean_lines - consistency_lambda * std_lines
+    fitness = np.mean(all_clean_fitness)
     return fitness, mean_lines, std_lines
 
 
@@ -111,7 +146,7 @@ def run(cfg: DictConfig):
     es = cma.CMAEvolutionStrategy(
         np.zeros(n_params),
         cfg.sigma0,
-        {"maxiter": cfg.max_iter, "tolx": 1e-6, "tolfun": 1e-6, "verbose": 3},
+        {"maxiter": cfg.max_iter, "tolx": 1e-6, "tolfun": 1e-6, "verbose": 3, "seed": cfg.seed},
     )
 
     if (p := OmegaConf.select(cfg, "subdir")) is not None:

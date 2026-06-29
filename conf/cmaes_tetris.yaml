@@ -17,6 +17,7 @@ emb_dim: 192
 
 # CMA-ES settings
 sigma0: 0.5
+seed: 41
 max_iter: 500
 checkpoint_interval: 1
 
