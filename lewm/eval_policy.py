@@ -120,7 +120,10 @@ def run(cfg: DictConfig):
             stack.enter_context(TeeStdout(lf))
             stack.enter_context(TeeStderr(lf))
 
-        print("\n=== Results ===")
+        print("=== Config ===")
+        print(OmegaConf.to_yaml(cfg, resolve=True))
+
+        print("=== Results ===")
         print(f"Episodes: {cfg.n_episodes}")
         print(f"Lines cleared: {all_lines}")
         print(f"Lines cleared — mean: {np.mean(all_lines):.2f}, "
