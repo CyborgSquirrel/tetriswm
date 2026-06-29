@@ -30,7 +30,7 @@ import stable_pretraining as spt
 import stable_worldmodel as swm
 from lewm.utils import get_img_preprocessor, agg
 from tetris.tetris import Action, Tetris
-from utils import LazyDataset, Tee
+from utils import LazyDataset, TeeStdout, TeeStderr
 
 
 def load_world_model(path):
@@ -73,13 +73,8 @@ def run(cfg):
         # Save logs
         lf = stack.enter_context((path / "log.txt").open("w"))
 
-        old_stdout, sys.stdout = sys.stdout, Tee(sys.stdout, lf)
-        old_stderr, sys.stderr = sys.stderr, Tee(sys.stderr, lf)
-
-        @stack.callback
-        def cb():
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
+        stack.enter_context(TeeStdout(lf))
+        stack.enter_context(TeeStderr(lf))
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

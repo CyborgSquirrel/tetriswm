@@ -1,5 +1,6 @@
 import logging
 import random
+import sys
 
 import numpy as np
 import h5py
@@ -85,7 +86,11 @@ class LazyDataset:
 
 class Tee:
   def __init__(self, *files):
-    self.files = files
+    self._files = files
+
+  @property
+  def files(self):
+    yield from self._files
 
   def write(self, obj):
     for f in self.files:
@@ -95,6 +100,38 @@ class Tee:
   def flush(self):
     for f in self.files:
       f.flush()
+
+
+class TeeStdout(Tee):
+  def __enter__(self):
+    sys.stdout, self.stdout = self, sys.stdout
+
+  def __exit__(self, exc_type, exc_value, traceback):
+    if sys.stdout is not self:
+      raise RuntimeError("sys.stdout was changed")
+    sys.stdout = self.stdout
+    del self.stdout
+
+  @property
+  def files(self):
+    yield self.stdout
+    yield from self._files
+
+
+class TeeStderr(Tee):
+  def __enter__(self):
+    sys.stderr, self.stderr = self, sys.stderr
+
+  def __exit__(self, exc_type, exc_value, traceback):
+    if sys.stderr is not self:
+      raise RuntimeError("sys.stderr was changed")
+    sys.stderr = self.stderr
+    del self.stderr
+
+  @property
+  def files(self):
+    yield self.stderr
+    yield from self._files
 
 
 def rng_derive_seed(rng: np.random.Generator | random.Random):

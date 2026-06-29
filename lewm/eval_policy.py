@@ -6,6 +6,7 @@ n_episodes, reporting average lines cleared.
 
 import os
 import sys
+import contextlib as ctl
 from pathlib import Path
 
 os.environ["MUJOCO_GL"] = "egl"
@@ -23,6 +24,7 @@ import tetris.gym_env  # noqa: F401
 from tetris.gym_env import TetrisEnv
 
 from lewm.beam_search_solver import BeamSearchSolver
+from utils import TeeStdout, TeeStderr
 
 
 def load_world_model(path: str):
@@ -112,10 +114,17 @@ def run(cfg: DictConfig):
             video_path = subdir / f"episode_{ep:03d}.mp4"
             imageio.mimwrite(str(video_path), frames, fps=10)
 
-    print("\n=== Results ===")
-    print(f"Episodes:      {cfg.n_episodes}")
-    print(f"Lines cleared — mean: {np.mean(all_lines):.2f}, "
-          f"min: {np.min(all_lines)}, max: {np.max(all_lines)}")
+    with ctl.ExitStack() as stack:
+        if subdir is not None:
+            lf = stack.enter_context((subdir / "log.txt").open("w"))
+            stack.enter_context(TeeStdout(lf))
+            stack.enter_context(TeeStderr(lf))
+
+        print("\n=== Results ===")
+        print(f"Episodes: {cfg.n_episodes}")
+        print(f"Lines cleared: {all_lines}")
+        print(f"Lines cleared — mean: {np.mean(all_lines):.2f}, "
+              f"min: {np.min(all_lines)}, max: {np.max(all_lines)}")
 
 
 if __name__ == "__main__":
