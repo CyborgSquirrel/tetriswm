@@ -1,0 +1,24 @@
+defaults:
+  - _self_
+  - tetris: ???
+
+checkpoint: ???   # path to world model checkpoint
+policy: ???       # path to .npy scorer params from cmaes_tetris.py
+
+tetris_cfg: ${tetris.tetris}
+
+plan_config:
+  horizon: 5
+  receding_horizon: 1
+  action_block: 1
+
+beam_width: 200
+lazy: false
+emb_dim: 192
+
+max_steps: 500
+n_episodes: 10
+seed: 42
+
+device: cuda
+subdir: ${now:%s}_${hydra:job.id}_eval
