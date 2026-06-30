@@ -56,6 +56,7 @@ def make_scorer(params: np.ndarray, emb_dim: int, device):
 def run_episode(env, solver, transform, max_steps, device, save_video):
     env.reset()
     frames = []
+    steps = 0
     for _ in range(max_steps):
         frame = env.render()
         if save_video:
@@ -64,9 +65,10 @@ def run_episode(env, solver, transform, max_steps, device, save_video):
         result = solver.solve({"pixels": pixels})
         action = result["actions"][0, 0].numpy()
         _, _, terminated, truncated, _ = env.step(action)
+        steps += 1
         if terminated or truncated:
             break
-    return env._tetris.dynamics.cleared_rows, frames
+    return env._tetris.dynamics.cleared_rows, steps, frames
 
 
 @hydra.main(version_base=None, config_path="../conf", config_name="eval_policy")
@@ -101,13 +103,15 @@ def run(cfg: DictConfig):
 
     rng = np.random.default_rng(cfg.seed)
     all_lines = []
+    all_steps = []
 
     for ep in range(cfg.n_episodes):
         seed = int(rng.integers(0, 2**31))
         env.reset(seed=seed)
-        lines, frames = run_episode(env, solver, transform, cfg.max_steps, device, save_video=subdir is not None)
+        lines, steps, frames = run_episode(env, solver, transform, cfg.max_steps, device, save_video=subdir is not None)
         all_lines.append(lines)
-        print(f"Episode {ep + 1}/{cfg.n_episodes}: {lines} lines cleared")
+        all_steps.append(steps)
+        print(f"Episode {ep + 1}/{cfg.n_episodes}: {lines} lines cleared, {steps} steps survived")
 
         if subdir is not None and frames:
             import imageio.v2 as imageio
@@ -128,6 +132,8 @@ def run(cfg: DictConfig):
         print(f"Lines cleared: {all_lines}")
         print(f"Lines cleared — mean: {np.mean(all_lines):.2f}, "
               f"min: {np.min(all_lines)}, max: {np.max(all_lines)}")
+        print(f"Steps survived — mean: {np.mean(all_steps):.2f}, "
+              f"min: {np.min(all_steps)}, max: {np.max(all_steps)}")
 
 
 if __name__ == "__main__":

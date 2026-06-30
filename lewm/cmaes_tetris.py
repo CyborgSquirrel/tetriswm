@@ -57,10 +57,18 @@ def make_scorer(params: np.ndarray, emb_dim: int, device):
 
 class Fitness:
     def update(self, env):
-        raise NotImplementedError()
+        pass
 
-    def finish(self):
-        raise NotImplementedError()
+    def finish(self, env):
+        pass
+
+
+class ClearedRowsFitness(Fitness):
+    def __init__(self):
+        self.value = 0
+
+    def finish(self, env):
+        self.value = env._tetris.dynamics.cleared_rows
 
 
 class CleanFitness(Fitness):
@@ -73,7 +81,7 @@ class CleanFitness(Fitness):
         empty_prop = empty_tiles / total_tiles
         self.value += empty_prop ** 2
 
-    def finish(self):
+    def finish(self, env):
         pass
 
 
@@ -95,28 +103,37 @@ def run_episode(env, solver, transform, max_steps, fitness, device):
 
     for f in fitness:
         f.update(env)
-        f.finish()
+        f.finish(env)
 
-    return env._tetris.dynamics.cleared_rows, frames
+    return frames
 
 
-def evaluate(params, emb_dim, solver, env, transform, max_steps, n_episodes, device, video_dir, tag, consistency_lambda):
+def evaluate(params, emb_dim, solver, env, transform, max_steps, n_episodes, device, video_dir, tag, consistency_lambda, fitness_cfg):
     import imageio.v2 as imageio
     solver.scorer = make_scorer(params, emb_dim, device)
+
+    all_fit = []
     all_lines = []
-    # all_clean_fitness = []
+
     for ep in range(n_episodes):
-        # clean_fitness = CleanFitness()
-        lines, frames = run_episode(env, solver, transform, max_steps, [], device)
-        all_lines.append(lines)
-        # all_clean_fitness.append(clean_fitness.value)
+        fitness_fn = hydra.utils.instantiate(fitness_cfg)
+        frames = run_episode(env, solver, transform, max_steps, [fitness_fn], device)
+        all_fit.append(fitness_fn.value)
+        all_lines.append(env._tetris.dynamics.cleared_rows)
+
         video_path = video_dir / f"{tag}_ep{ep}.mp4"
         imageio.mimwrite(str(video_path), frames, fps=10)
-    mean_lines = float(np.mean(all_lines))
-    std_lines = float(np.std(all_lines))
-    fitness = mean_lines - consistency_lambda * std_lines
-    # fitness = np.mean(all_clean_fitness)
-    return fitness, mean_lines, std_lines
+
+    # Lines stats
+    mean_lines = np.mean(all_lines).item()
+    std_lines = np.std(all_lines).item()
+
+    # Fitness stats + aggregation
+    mean_fit = np.mean(all_fit).item()
+    std_fit = np.std(all_fit).item()
+    fit = mean_fit - consistency_lambda * std_fit
+
+    return fit, mean_fit, std_fit, mean_lines, std_lines
 
 
 @hydra.main(version_base=None, config_path="../conf", config_name="cmaes_tetris")
@@ -158,7 +175,7 @@ def run(cfg: DictConfig):
     if cfg.wandb.enabled:
         wandb.init(**cfg.wandb.config, config=OmegaConf.to_container(cfg, resolve=True))
 
-    best_score = -np.inf
+    best_fit = -np.inf
     best_params = None
     iteration = 0
 
@@ -170,33 +187,34 @@ def run(cfg: DictConfig):
                 transform, cfg.max_steps, cfg.n_eval_episodes, device,
                 subdir, tag=f"iter{iteration:04d}_cand{i:03d}",
                 consistency_lambda=cfg.consistency_lambda,
+                fitness_cfg=cfg.fitness,
             )
             for i, x in enumerate(solutions)
         ]
-        fitnesses, mean_lines_all, std_lines_all = zip(*results)
-        fitnesses = list(fitnesses)
+        fit, mean_fit, std_fit, mean_lines, std_lines = zip(*results)
+        fit = list(fit)
 
         # CMA-ES minimizes, so negate fitness
-        es.tell(solutions, [-f for f in fitnesses])
+        es.tell(solutions, [-f for f in fit])
         es.disp()
 
-        best_idx = int(np.argmax(fitnesses))
-        gen_best = fitnesses[best_idx]
-        if gen_best > best_score:
-            best_score = gen_best
+        best_idx = int(np.argmax(fit))
+        gen_best = fit[best_idx]
+        if gen_best > best_fit:
+            best_fit = gen_best
             best_params = solutions[best_idx].copy()
-            print(f"New best: {best_score:.2f} (mean lines: {mean_lines_all[best_idx]:.2f}, std: {std_lines_all[best_idx]:.2f})")
+            print(f"New best: {best_fit:.2f} (fitness val: {mean_fit[best_idx]:.2f}±{std_fit[best_idx]:.2f}, lines: {mean_lines[best_idx]:.2f}±{std_lines[best_idx]:.2f})")
 
         if cfg.wandb.enabled:
             best_video_tag = f"iter{iteration:04d}_cand{best_idx:03d}_ep0"
             wandb.log({
                 "fitness/best": gen_best,
-                "fitness/mean": float(np.mean(fitnesses)),
-                "fitness/min": float(np.min(fitnesses)),
-                "fitness/all_time_best": best_score,
-                "lines/best_mean": mean_lines_all[best_idx],
-                "lines/best_std": std_lines_all[best_idx],
-                "lines/pop_mean": float(np.mean(mean_lines_all)),
+                "fitness/mean": np.mean(fit).item(),
+                "fitness/min": np.min(fit).item(),
+                "fitness/all_time_best": best_fit,
+                "lines/best_mean": mean_lines[best_idx],
+                "lines/best_std": std_lines[best_idx],
+                "lines/pop_mean": np.mean(mean_lines).item(),
                 "cmaes/sigma": es.sigma,
                 "best_episode": wandb.Video(str(subdir / f"{best_video_tag}.mp4"), fps=10),
             }, step=iteration)
@@ -207,7 +225,7 @@ def run(cfg: DictConfig):
             np.save(ckpt_path, best_params)
             print(f"Checkpoint saved to {ckpt_path}")
 
-    print(f"\nOptimization complete. Best score: {best_score:.2f} lines/episode")
+    print(f"\nOptimization complete. Best score: {best_fit:.2f} lines/episode")
     out_path = subdir / "cmaes_scorer.npy"
     np.save(out_path, best_params)
     print(f"Best params saved to {out_path}")

@@ -26,6 +26,9 @@ max_steps: 100
 n_eval_episodes: 1
 consistency_lambda: 0.5
 
+fitness:
+  _target_: lewm.cmaes_tetris.ClearedRowsFitness
+
 device: cuda
 subdir: ${now:%s}_${hydra:job.id}
 
