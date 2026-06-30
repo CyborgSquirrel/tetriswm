@@ -104,18 +104,18 @@ def evaluate(params, emb_dim, solver, env, transform, max_steps, n_episodes, dev
     import imageio.v2 as imageio
     solver.scorer = make_scorer(params, emb_dim, device)
     all_lines = []
-    all_clean_fitness = []
+    # all_clean_fitness = []
     for ep in range(n_episodes):
-        clean_fitness = CleanFitness()
-        lines, frames = run_episode(env, solver, transform, max_steps, [clean_fitness], device)
+        # clean_fitness = CleanFitness()
+        lines, frames = run_episode(env, solver, transform, max_steps, [], device)
         all_lines.append(lines)
-        all_clean_fitness.append(clean_fitness.value)
+        # all_clean_fitness.append(clean_fitness.value)
         video_path = video_dir / f"{tag}_ep{ep}.mp4"
         imageio.mimwrite(str(video_path), frames, fps=10)
     mean_lines = float(np.mean(all_lines))
     std_lines = float(np.std(all_lines))
-    # fitness = mean_lines - consistency_lambda * std_lines
-    fitness = np.mean(all_clean_fitness)
+    fitness = mean_lines - consistency_lambda * std_lines
+    # fitness = np.mean(all_clean_fitness)
     return fitness, mean_lines, std_lines
 
 
