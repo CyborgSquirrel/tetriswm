@@ -97,7 +97,7 @@ def run_episode(env, solver, transform, max_steps, fitness, device, env_seed=Non
         frames.append(frame)
         pixels = rearrange(transform(frame), "c h w -> 1 1 c h w").to(device)
         result = solver.solve({"pixels": pixels})
-        action = rearrange(result["actions"], "1 1 c h w -> c h w").numpy()
+        action = result["actions"][0, 0].numpy()
         _, _, terminated, truncated, _ = env.step(action)
         if terminated or truncated:
             break
