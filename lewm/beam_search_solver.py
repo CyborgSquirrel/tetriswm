@@ -210,7 +210,7 @@ class BeamSearchSolver:
 
         best_seqs = torch.cat(all_best, dim=0)
 
-        print(f"BeamSearchSolver.solve {time.time() - start_time:.3f}s "
-              f"(beam_width={beam_width}, depth={plan_steps})")
+        # print(f"BeamSearchSolver.solve {time.time() - start_time:.3f}s "
+        #       f"(beam_width={beam_width}, depth={plan_steps})")
 
         return {"actions": best_seqs}
