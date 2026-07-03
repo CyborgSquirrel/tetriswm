@@ -163,8 +163,8 @@ def run(cfg: DictConfig):
 
     es = cma.CMAEvolutionStrategy(
         np.zeros(n_params),
-        cfg.sigma0,
-        {"maxiter": cfg.max_iter, "tolx": 1e-6, "tolfun": 1e-6, "verbose": 3, "seed": cfg.seed},
+        cfg.cmaes.sigma0,
+        OmegaConf.to_container(cfg.cmaes.opts, resolve=True),
     )
 
     if (p := OmegaConf.select(cfg, "subdir")) is not None:

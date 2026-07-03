@@ -15,11 +15,18 @@ beam_width: 200
 lazy: false
 emb_dim: 192
 
-# CMA-ES settings
-sigma0: 0.5
-seed: 41
-max_iter: 500
 checkpoint_interval: 1
+
+# CMA-ES settings
+cmaes:
+  sigma0: 0.5
+  opts:
+    seed: 41
+    maxiter: 500
+    tolx: 1e-6
+    tolfun: 1e-6
+    verbose: 3
+    tolflatfitness: 5
 
 # Evaluation settings
 max_steps: 100
