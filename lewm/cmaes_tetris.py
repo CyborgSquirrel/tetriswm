@@ -19,6 +19,7 @@ import hydra
 import wandb
 import stable_pretraining as spt
 import stable_worldmodel as swm
+from einops import rearrange
 from omegaconf import DictConfig, OmegaConf
 
 import tetris.gym_env  # noqa: F401
@@ -85,8 +86,8 @@ class CleanFitness(Fitness):
         pass
 
 
-def run_episode(env, solver, transform, max_steps, fitness, device):
-    env.reset()
+def run_episode(env, solver, transform, max_steps, fitness, device, env_seed=None):
+    env.reset(seed=env_seed)
     frames = []
     for _ in range(max_steps):
         for f in fitness:
@@ -94,9 +95,9 @@ def run_episode(env, solver, transform, max_steps, fitness, device):
 
         frame = env.render()
         frames.append(frame)
-        pixels = transform(frame).unsqueeze(0).unsqueeze(0).to(device)  # (1,1,C,H,W)
+        pixels = rearrange(transform(frame), "c h w -> 1 1 c h w").to(device)
         result = solver.solve({"pixels": pixels})
-        action = result["actions"][0, 0].numpy()
+        action = rearrange(result["actions"], "1 1 c h w -> c h w").numpy()
         _, _, terminated, truncated, _ = env.step(action)
         if terminated or truncated:
             break
@@ -108,7 +109,7 @@ def run_episode(env, solver, transform, max_steps, fitness, device):
     return frames
 
 
-def evaluate(params, emb_dim, solver, env, transform, max_steps, n_episodes, device, video_dir, tag, consistency_lambda, fitness_cfg):
+def evaluate(params, emb_dim, solver, env, transform, max_steps, n_episodes, device, video_dir, tag, consistency_lambda, fitness_cfg, env_seed=None):
     import imageio.v2 as imageio
     solver.scorer = make_scorer(params, emb_dim, device)
 
@@ -117,7 +118,7 @@ def evaluate(params, emb_dim, solver, env, transform, max_steps, n_episodes, dev
 
     for ep in range(n_episodes):
         fitness_fn = hydra.utils.instantiate(fitness_cfg)
-        frames = run_episode(env, solver, transform, max_steps, [fitness_fn], device)
+        frames = run_episode(env, solver, transform, max_steps, [fitness_fn], device, env_seed=env_seed)
         all_fit.append(fitness_fn.value)
         all_lines.append(env._tetris.dynamics.cleared_rows)
 
@@ -188,6 +189,7 @@ def run(cfg: DictConfig):
                 subdir, tag=f"iter{iteration:04d}_cand{i:03d}",
                 consistency_lambda=cfg.consistency_lambda,
                 fitness_cfg=cfg.fitness,
+                env_seed=OmegaConf.select(cfg, "env_seed"),
             )
             for i, x in enumerate(solutions)
         ]

@@ -25,6 +25,7 @@ checkpoint_interval: 1
 max_steps: 100
 n_eval_episodes: 1
 consistency_lambda: 0.5
+env_seed: null  # set to an integer to fix the Tetris env seed across all episodes
 
 fitness:
   _target_: lewm.cmaes_tetris.ClearedRowsFitness
