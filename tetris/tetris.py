@@ -4,6 +4,7 @@ import struct
 import dataclasses as dc
 import stable_pretraining as spt
 from einops import rearrange, pack
+from omegaconf import OmegaConf
 import sys
 import torch
 from typing import Optional
@@ -502,6 +503,7 @@ class Tetris:
         height: int = 20,
         render_size: int = 224,
         queue_len: int = 0,
+        rendered_queue_len: Optional[int] = None,
         dynamics = None,
     ):
         self.width = width
@@ -516,6 +518,10 @@ class Tetris:
 
         self.queue_len = queue_len
 
+        if rendered_queue_len is None:
+            rendered_queue_len = queue_len
+        self.rendered_queue_len = rendered_queue_len
+
         # Initialize dynamics after parameters are set on tetris
         self.dynamics = dynamics or GtDynamics()
         self.dynamics._init(self)
@@ -525,7 +531,7 @@ class Tetris:
                 self.lay_grid = layout.Rect(self.width*self.tile_size, self.height*self.tile_size)
                 with layout.VStack(2):
                     self.lay_queue = []
-                    for _ in range(self.queue_len):
+                    for _ in range(self.rendered_queue_len):
                         self.lay_queue.append(layout.Rect(4*self.tile_size, 2*self.tile_size))
 
     @classmethod
@@ -539,6 +545,7 @@ class Tetris:
             height=cfg.height,
             render_size=cfg.render_size,
             queue_len=cfg.queue_len,
+            rendered_queue_len=OmegaConf.select(cfg, "rendered_queue_len"),
             dynamics=dynamics,
         )
 
