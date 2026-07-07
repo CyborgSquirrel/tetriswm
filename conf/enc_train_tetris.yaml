@@ -1,0 +1,80 @@
+defaults:
+  - _self_
+  - tetris: ???
+  - optimizers: default
+
+data:
+  dataset:
+    num_steps: ${eval:'${wm.num_preds} + ${wm.history_size}'}
+    frameskip: 1
+    name: ${tetris.out}
+    keys_to_load:
+      - pixels
+      - tetris_grid_mask
+
+# output_model_name: enc
+output_model_name: enc_${tetris.out}
+checkpoint_interval: ${eval:'max(1, ${trainer.max_epochs} // 10)'}
+subdir: ${now:%s}_${hydra:job.id}
+
+train_split:
+  by: window
+  p: 0.9
+
+num_workers: 6
+seed: 3072
+img_size: ${tetris.tetris.render_size}
+patch_size: 14
+encoder_scale: tiny
+dump_object: True
+normalize_pixels: True
+
+trainer:
+  default_root_dir: outputs
+  max_epochs: 100
+  devices: auto
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+
+loader:
+  batch_size: 64
+  num_workers: ${num_workers}
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+
+overfit: false
+
+track_collapse:
+  enabled: false
+
+wandb:
+  enabled: True
+  config:
+    entity: andrei-jardan-technical-university-of-munich
+    project: genai-tetris
+    name: ${output_model_name}
+    id: ${subdir}
+    resume: allow
+    log_model: False
+
+wm:
+  embed_dim: 192
+  history_size: 3
+  num_preds: 1
+
+loss:
+  sigreg:
+    weight: 0.09
+    kwargs:
+      knots: 17
+      num_proj: 1024
+
+grid_mask_probe:
+  grid_width: ${tetris.tetris.width}
+  grid_height: ${tetris.tetris.height}
+  model:
+    type: linear
+    hidden_dim: 512
+    num_layers: 2
