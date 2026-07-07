@@ -13,18 +13,20 @@ from lightning.pytorch.loggers import WandbLogger
 from omegaconf import OmegaConf, open_dict
 from torch import nn
 
-from module import MLP, SIGReg
+from module import MLP, SIGReg, RearrangeWrap
 from train_probe import build_probe
 from utils import get_img_preprocessor, ModelObjectCallBack, split_dataset
 from einops import rearrange, reduce
+from einops.layers.torch import EinMix, Rearrange
 
 
 class EncModel(nn.Module):
-    def __init__(self, encoder, projector, probe):
+    def __init__(self, encoder, projector, probe, patch_proj=None):
         super().__init__()
         self.encoder = encoder
         self.projector = projector
         self.probe = probe
+        self.patch_proj = patch_proj
 
     def encode_pixels(self, pixels):
         pixels = pixels.float()
@@ -32,7 +34,15 @@ class EncModel(nn.Module):
         pixels = rearrange(pixels, "b t ... -> (b t) ...")
         output = self.encoder(pixels, interpolate_pos_encoding=True)
         cls_token = output.last_hidden_state[:, 0]
-        emb = self.projector(cls_token)
+        patch_tokens = output.last_hidden_state[:, 1:]
+
+        if self.patch_proj is None:
+            pixels_emb = cls_token
+        else:
+            patch_proj = self.patch_proj(patch_tokens)
+            pixels_emb = torch.cat((cls_token, patch_proj), axis=-1)
+
+        emb = self.projector(pixels_emb)
         return rearrange(emb, "(b t) d -> b t d", b=b)
 
 
@@ -160,11 +170,46 @@ def run(cfg):
         use_mask_token=False,
     )
 
+    if cfg.img_size % cfg.patch_size != 0:
+        raise RuntimeError()
+    patch_num = (cfg.img_size // cfg.patch_size) ** 2
+
     enc_hidden_dim = encoder.config.hidden_size
     embed_dim = cfg.wm.embed_dim
 
+    projector_input_dim = enc_hidden_dim
+    patch_proj = None
+    if OmegaConf.select(cfg, "wm.patch_projector.enabled", default=False):
+        projector_input_dim += cfg.wm.patch_projector.dim * patch_num
+        match cfg.wm.patch_projector.type:
+            case "linear":
+                match cfg.wm.patch_projector.weights:
+                    case "indep":
+                        patch_proj = nn.Sequential(
+                            EinMix(
+                                "bt n d_in -> bt n d_out",
+                                weight_shape="n d_in d_out",
+                                bias_shape="n d_out",
+                                n=patch_num,
+                                d_in=enc_hidden_dim,
+                                d_out=cfg.wm.patch_projector.dim,
+                            ),
+                            Rearrange("bt n d_out -> bt (n d_out)"),
+                        )
+                    case "shared":
+                        patch_proj = RearrangeWrap(
+                            nn.Linear(enc_hidden_dim, cfg.wm.patch_projector.dim),
+                            pattern_in="bt n d_in -> (bt n) d_in",
+                            pattern_out="(bt n) d_out -> bt (n d_out)",
+                            capture="bt _ _",
+                        )
+                    case _:
+                        raise RuntimeError(f"Unexpected {cfg.wm.patch_projector.weights=}")
+            case _:
+                raise RuntimeError(f"Unexpected {cfg.wm.patch_projector.type=}")
+
     projector = MLP(
-        input_dim=enc_hidden_dim,
+        input_dim=projector_input_dim,
         output_dim=embed_dim,
         hidden_dim=2048,
         norm_fn=torch.nn.BatchNorm1d,
@@ -174,7 +219,7 @@ def run(cfg):
     grid_cells = probe_cfg.grid_width * probe_cfg.grid_height
     probe = build_probe(embed_dim, grid_cells, probe_cfg.model)
 
-    enc_model = EncModel(encoder=encoder, projector=projector, probe=probe)
+    enc_model = EncModel(encoder=encoder, projector=projector, probe=probe, patch_proj=patch_proj)
 
     if OmegaConf.select(cfg, "overfit", default=False):
         for module in enc_model.modules():

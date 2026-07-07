@@ -63,6 +63,11 @@ wm:
   embed_dim: 192
   history_size: 3
   num_preds: 1
+  patch_projector:
+    enabled: false
+    # type: linear
+    # weights: shared # or indep
+    # dim: 4
 
 loss:
   sigreg:
