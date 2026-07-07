@@ -104,6 +104,15 @@ def enc_forward(self, batch, stage, cfg):
     grid_targets = rearrange(batch["tetris_grid_mask"].float(), "b t w h -> (b t) (w h)")
     grid_loss = F.binary_cross_entropy_with_logits(grid_logits, grid_targets)
 
+    with torch.no_grad():
+        preds = grid_logits.sigmoid() > 0.5
+        masks_bool = grid_targets.bool()
+        logs[f"{stage}/grid_pixel_acc"] = (preds == masks_bool).float().mean()
+        tp = (preds & masks_bool).float().sum()
+        fp = (preds & ~masks_bool).float().sum()
+        fn = (~preds & masks_bool).float().sum()
+        logs[f"{stage}/grid_f1"] = tp / (tp + 0.5 * (fp + fn) + 1e-8)
+
     output = {"emb": emb, "grid_loss": grid_loss}
 
     if lambd > 0:
