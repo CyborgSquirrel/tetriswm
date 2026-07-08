@@ -43,11 +43,19 @@ def main(cfg: DictConfig):
             },
         )
 
+    use_batch_norm = OmegaConf.select(cfg, "batch_norm", default=False)
+    bn = torch.nn.BatchNorm1d(cfg.data.dim).to(device) if use_batch_norm else None
+
     global_step = itt.count()
     for _ in tqdm(range(cfg.epochs)):
         for (idx,) in loader:
             opt.zero_grad()
-            loss = sigreg(v[:, idx, :])
+            batch = v[:, idx, :]
+            if bn is not None:
+                # batch: (hist, batch, dim) -> BatchNorm1d expects (N, C) or (N, C, L)
+                h, b, d = batch.shape
+                batch = bn(batch.reshape(h * b, d)).reshape(h, b, d)
+            loss = sigreg(batch)
             loss.backward()
             opt.step()
             if sched:

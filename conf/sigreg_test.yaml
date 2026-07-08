@@ -2,6 +2,7 @@ deterministic: false
 detect_anomaly: false
 
 histogram_enabled: false
+batch_norm: false
 
 device: cpu
 
