@@ -617,6 +617,11 @@ def run(cfg):
         patch_proj=patch_proj,
     )
 
+    load_checkpoint = OmegaConf.select(cfg, "load_checkpoint")
+    if load_checkpoint is not None:
+        saved_model = torch.load(load_checkpoint, map_location="cpu", weights_only=False)
+        world_model.load_state_dict(saved_model.state_dict())
+
     if OmegaConf.select(cfg, "overfit", default=False):
         # disable dropout for overfitting
         for module in world_model.modules():
