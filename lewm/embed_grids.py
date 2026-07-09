@@ -74,11 +74,11 @@ def main(cfg: DictConfig):
         keys_to_load=["pixels", "tetris_grid_mask"],
     )
 
-    n = min(cfg.n, len(dataset))
-    indices = rng.choice(len(dataset), size=n, replace=False)
-    indices.sort()
-    subset = Subset(dataset, indices.tolist())
-    loader = DataLoader(subset, batch_size=cfg.batch_size, shuffle=False, num_workers=0)
+    # n = min(cfg.n, len(dataset))
+    # indices = rng.choice(len(dataset), size=n, replace=False)
+    # indices.sort()
+    # dataset = Subset(dataset, indices.tolist())
+    loader = DataLoader(dataset, batch_size=cfg.batch_size, shuffle=False, num_workers=0)
 
     # Determine img_size from first batch
     first_batch = next(iter(loader))

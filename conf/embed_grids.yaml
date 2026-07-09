@@ -2,7 +2,7 @@ checkpoint: ???
 dataset:
   name: ???
   cache_dir: ???
-n: ???
-batch_size: 64
+# n: ???
+batch_size: 4096
 seed: 41
 output: embeddings.h5
