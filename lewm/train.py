@@ -685,11 +685,16 @@ def run(cfg):
         enable_checkpointing=True,
     )
 
+    resume_from = OmegaConf.select(cfg, "resume_from")
+    ckpt_path = None
+    if resume_from is not None:
+        ckpt_path = Path(resume_from)
+
     manager = spt.Manager(
         trainer=trainer,
         module=world_model,
         data=data_module,
-        ckpt_path=run_dir / f"{cfg.output_model_name}_weights.ckpt",
+        ckpt_path=ckpt_path,
     )
 
     manager()
