@@ -154,6 +154,8 @@ class ObjectSet:
         self.oid_to_obj = []
         self.obj_to_oid = {}
 
+        self._len = 0
+
         for obj in objs:
             self.add(obj)
 
@@ -161,7 +163,11 @@ class ObjectSet:
         oid = len(self.oid_to_obj)
         self.oid_to_obj.append(obj)
         self.obj_to_oid[obj] = oid
+        self._len += 1
         return obj
+
+    def __len__(self):
+        return self._len
 
 
 TILE_SET = ObjectSet()

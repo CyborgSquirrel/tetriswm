@@ -466,6 +466,11 @@ def run(cfg):
     ##       dataset       ##
     #########################
 
+    if OmegaConf.select(cfg, "wm.mino_mask_cond.enabled", default=False):
+        with open_dict(cfg):
+            if "minoes_mask" not in cfg.data.dataset.keys_to_load:
+                cfg.data.dataset.keys_to_load.append("minoes_mask")
+
     dataset = swm.data.HDF5Dataset(**cfg.data.dataset, transform=None)
     transforms = []
 
@@ -593,6 +598,10 @@ def run(cfg):
     )
     action_encoder = Embedder(input_dim=effective_act_dim, emb_dim=embed_dim)
 
+    mino_mask_encoder = None
+    if OmegaConf.select(cfg, "wm.mino_mask_cond.enabled", default=False):
+        mino_mask_encoder = nn.Linear(cfg.wm.minoes_mask_dim, embed_dim, bias=False)
+
     projector = MLP(
         input_dim=projector_input_dim,
         output_dim=embed_dim,
@@ -615,12 +624,14 @@ def run(cfg):
         projector=projector,
         pred_proj=predictor_proj,
         patch_proj=patch_proj,
+        mino_mask_encoder=mino_mask_encoder,
     )
 
     load_checkpoint = OmegaConf.select(cfg, "load_checkpoint")
     if load_checkpoint is not None:
         saved_model = torch.load(load_checkpoint, map_location="cpu", weights_only=False)
         world_model.load_state_dict(saved_model.state_dict())
+        del saved_model
 
     if OmegaConf.select(cfg, "overfit", default=False):
         # disable dropout for overfitting

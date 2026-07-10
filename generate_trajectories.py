@@ -10,7 +10,7 @@ from tetris import tetris
 import h5py
 from tqdm import tqdm
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from utils import LazyDataset, rng_derive_seed
 
 log = logging.getLogger(__name__)
@@ -43,11 +43,20 @@ def main(cfg: DictConfig):
   keys["state_mino_tile_idx"] = {}
   keys["state_mino_queue"] = {}
   keys["state_rng_bytes"] = {}
+  keys["minoes_mask"] = {}
 
   # Write to HDF5 file
   with ctl.ExitStack() as stack:
     path = Path.home() / ".stable_worldmodel" / f"{cfg.out}.h5"
     f = stack.enter_context(h5py.File(path, "w"))
+
+    # Create one-hot vector of available tetrominoes
+    minoes = OmegaConf.to_container(cfg.tetris.mino_generator.minoes, resolve=True)
+    minoes_mask = np.zeros(len(tetris.MINO_SET), dtype=np.float32)
+    for mino_name in minoes:
+      mino = tetris.STR_TO_MINO[mino_name]
+      mino_oid = tetris.MINO_SET.obj_to_oid[mino]
+      minoes_mask[mino_oid] = 1
 
     # Create (lazy) datasets
     data = {}
@@ -113,6 +122,8 @@ def main(cfg: DictConfig):
           env.step(action)
 
         data["action"].append(action_onehot)
+
+        data["minoes_mask"].append(minoes_mask)
 
         if env.dynamics.state == tetris.GameState.OVER:
           break

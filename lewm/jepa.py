@@ -20,9 +20,11 @@ class JEPA(nn.Module):
         projector=None,
         pred_proj=None,
         patch_proj=None,
+        mino_mask_encoder=None,
     ):
         """
         action_trans: normalization
+        mino_mask_encoder: optional linear/MLP to embed the minoes_mask into act_emb
         """
 
         super().__init__()
@@ -34,6 +36,7 @@ class JEPA(nn.Module):
         self.projector = projector or nn.Identity()
         self.pred_proj = pred_proj or nn.Identity()
         self.patch_proj = patch_proj
+        self.mino_mask_encoder = mino_mask_encoder
 
     def encode_pixels(self, pixels):
         """
@@ -68,7 +71,13 @@ class JEPA(nn.Module):
         info["emb"] = self.encode_pixels(info["pixels"])
 
         if "action" in info:
-            info["act_emb"] = self.action_encoder(self.action_trans(info["action"]))
+            act_emb = self.action_encoder(self.action_trans(info["action"]))
+            if self.mino_mask_encoder is not None and "minoes_mask" in info:
+                mino_mask = info["minoes_mask"].float()
+                if mino_mask.dim() == 2:
+                    mino_mask = mino_mask.unsqueeze(1)
+                act_emb = act_emb + self.mino_mask_encoder(mino_mask)
+            info["act_emb"] = act_emb
 
         return info
 
