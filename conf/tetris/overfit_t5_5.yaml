@@ -2,7 +2,6 @@ out: tetris_overfit_t5_5
 traj_num: 5
 traj_len: 5
 seed: 42
-remove_actions: []
 
 tetris:
   width: 8

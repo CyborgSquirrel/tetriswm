@@ -4,7 +4,6 @@ out: tetris_train_6k
 traj_num: 6000
 traj_len: 1000
 seed: 42
-remove_actions: []
 
 tetris:
   width: 8

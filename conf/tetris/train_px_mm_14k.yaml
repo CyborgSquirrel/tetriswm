@@ -2,7 +2,6 @@ out: tetris_train_px_mm_14k
 traj_num: 14000
 traj_len: 500
 seed: 42
-remove_actions: []
 
 policy:
   _target_: tetris_policy.MixPolicy

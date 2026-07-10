@@ -21,8 +21,8 @@ def main(cfg: DictConfig):
   rng: np.random.Generator = np.random.default_rng(seed=cfg.seed)
 
   actions = set(tetris.Action)
-  for name in cfg.remove_actions:
-    actions.discard(tetris.Action[name])
+  # for name in cfg.remove_actions:
+  #   actions.discard(tetris.Action[name])
   actions = np.array(list(actions))
 
   keys = {}
@@ -50,14 +50,6 @@ def main(cfg: DictConfig):
     path = Path.home() / ".stable_worldmodel" / f"{cfg.out}.h5"
     f = stack.enter_context(h5py.File(path, "w"))
 
-    # Create one-hot vector of available tetrominoes
-    minoes = OmegaConf.to_container(cfg.tetris.mino_generator.minoes, resolve=True)
-    minoes_mask = np.zeros(len(tetris.MINO_SET), dtype=np.float32)
-    for mino_name in minoes:
-      mino = tetris.STR_TO_MINO[mino_name]
-      mino_oid = tetris.MINO_SET.obj_to_oid[mino]
-      minoes_mask[mino_oid] = 1
-
     # Create (lazy) datasets
     data = {}
     for key, key_spec in keys.items():
@@ -79,12 +71,44 @@ def main(cfg: DictConfig):
     ep_idx_it = 0
     ep_offset_it = 0
 
+    # Extract env_cfgs
+    env_cfgs = None
+    env_weights = []
+    if not OmegaConf.select(cfg, "mix", default=False):
+      env_weights.append(1)
+      env_cfgs = [
+        dict(
+          policy=cfg.policy,
+          tetris=cfg.tetris,
+        )
+      ]
+    else:
+      env_cfgs = list(cfg.envs)
+      for env in env_cfgs:
+        env_weights.append(env.w)
+
+    env_weights = np.array(env_weights)
+    env_ps = env_weights / np.sum(env_weights)
+    env_idxs = np.arange(len(env_cfgs))
+
     for traj_idx in tqdm(range(cfg.traj_num)):
+      env_idx = rng.choice(env_idxs, p=env_ps)
+      env_cfg = env_cfgs[env_idx]
+
+      # Create one-hot vector of available tetrominoes
+      minoes = OmegaConf.to_container(env_cfg.tetris.mino_generator.minoes, resolve=True)
+      minoes_mask = np.zeros(len(tetris.MINO_SET), dtype=np.float32)
+      for mino_name in minoes:
+        mino = tetris.STR_TO_MINO[mino_name]
+        mino_oid = tetris.MINO_SET.obj_to_oid[mino]
+        minoes_mask[mino_oid] = 1
+
+      # Instantiate the env
       env = tetris.Tetris.from_config(
-        cfg.tetris,
+        env_cfg.tetris,
         rng=np.random.default_rng(rng_derive_seed(rng)),
       )
-      policy = hydra.utils.instantiate(cfg.policy)
+      policy = hydra.utils.instantiate(env_cfg.policy)
       policy._init(env, np.random.default_rng(rng_derive_seed(rng)))
 
       ep_idx = ep_idx_it

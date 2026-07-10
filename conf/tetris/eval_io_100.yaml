@@ -2,7 +2,6 @@ out: tetris_eval_io_100
 traj_num: 100
 traj_len: 1000
 seed: 41
-remove_actions: []
 
 policy:
   _target_: tetris_policy.RandomPolicy

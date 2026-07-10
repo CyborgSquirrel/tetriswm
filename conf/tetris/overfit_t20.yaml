@@ -1,7 +1,6 @@
 traj_num: 2
 traj_len: 20
 seed: 42
-remove_actions: []
 out: tetris_overfit_t${.traj_len}
 
 tetris:

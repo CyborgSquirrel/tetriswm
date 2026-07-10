@@ -1,0 +1,35 @@
+name: train_io_mix_25k
+out: tetris_${name}
+seed: 42
+mix: true
+
+traj_num: 25000
+traj_len: 1000
+
+envs:
+  - w: 1
+
+    policy:
+      _target_: tetris_policy.RandomPolicy
+
+    tetris:
+      width: 8
+      height: 12
+      render_size: 126
+      queue_len: 5
+      mino_generator:
+        _target_: tetris.tetris.BagGenerator
+        minoes: [I]
+  - w: 1
+
+    policy:
+      _target_: tetris_policy.RandomPolicy
+
+    tetris:
+      width: 8
+      height: 12
+      render_size: 126
+      queue_len: 5
+      mino_generator:
+        _target_: tetris.tetris.BagGenerator
+        minoes: [O]
