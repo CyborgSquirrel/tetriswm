@@ -297,7 +297,13 @@ def lejepa_forward(self, batch, stage, cfg):
     # Replace NaN values with 0 (occurs at sequence boundaries)
     # batch["action"] = torch.nan_to_num(batch["action"], 0.0)
 
-    output = self.model.encode(batch)
+    if OmegaConf.select(cfg, "train_encoder", default=True):
+        cm = ctl.nullcontext()
+    else:
+        cm = torch.no_grad()
+
+    with cm:
+        output = self.model.encode(batch)
 
     emb = output["emb"]  # (B, T, D)
     act_emb = output["act_emb"]
@@ -449,6 +455,9 @@ def run(cfg):
         pretrained=False,
         use_mask_token=False,
     )
+    if not OmegaConf.select(cfg, "train_encoder", default=True):
+        for param in encoder.parameters():
+            param.requires_grad = False
 
     if cfg.img_size % cfg.patch_size != 0:
         raise RuntimeError()
