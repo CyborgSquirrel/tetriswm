@@ -96,7 +96,7 @@ def main(cfg: DictConfig):
         f = stack.enter_context(h5py.File(output, "w"))
         emb_ds = stack.enter_context(LazyDataset(f, "emb"))
         mask_ds = stack.enter_context(LazyDataset(f, "mask"))
-        idx_ds = stack.enter_context(LazyDataset(f, "idx"))
+        # idx_ds = stack.enter_context(LazyDataset(f, "idx"))
 
         # index 0: empty grid
         # empty_pixels = render_empty(grid_w, grid_h, img_size)
@@ -114,7 +114,7 @@ def main(cfg: DictConfig):
             for i in range(B):
                 emb_ds.append(embs[i])
                 mask_ds.append(masks[i, 0].numpy())
-                idx_ds.append(np.int64(indices[src_idx]))
+                # idx_ds.append(np.int64(indices[src_idx]))
                 src_idx += 1
 
     print(f"Saved {n} embeddings to {repr(output)}")
