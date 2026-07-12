@@ -5,6 +5,7 @@ Index 0 is the empty grid; indices 1..n are sampled from the dataset.
 
 import sys
 import contextlib as ctl
+import os.path
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -89,17 +90,19 @@ def main(cfg: DictConfig):
     first_mask = first_batch["tetris_grid_mask"]  # (B, 1, W, H)
     grid_w, grid_h = first_mask.shape[-2], first_mask.shape[-1]
 
+    output = os.path.join(os.path.subdir(cfg.checkpoint), "embeddings.h5")
+
     with ctl.ExitStack() as stack:
-        f = stack.enter_context(h5py.File(cfg.output, "w"))
+        f = stack.enter_context(h5py.File(output, "w"))
         emb_ds = stack.enter_context(LazyDataset(f, "emb"))
         mask_ds = stack.enter_context(LazyDataset(f, "mask"))
         idx_ds = stack.enter_context(LazyDataset(f, "idx"))
 
         # index 0: empty grid
-        empty_pixels = render_empty(grid_w, grid_h, img_size)
-        emb_ds.append(encode_single(model, empty_pixels, img_size))
-        mask_ds.append(np.zeros((grid_w, grid_h), dtype=np.uint8))
-        idx_ds.append(np.int64(-1))
+        # empty_pixels = render_empty(grid_w, grid_h, img_size)
+        # emb_ds.append(encode_single(model, empty_pixels, img_size))
+        # mask_ds.append(np.zeros((grid_w, grid_h), dtype=np.uint8))
+        # idx_ds.append(np.int64(-1))
 
         # indices 1..n: sampled from dataset
         src_idx = 0
@@ -114,7 +117,7 @@ def main(cfg: DictConfig):
                 idx_ds.append(np.int64(indices[src_idx]))
                 src_idx += 1
 
-    print(f"Saved {n + 1} embeddings (index 0 = empty) to {cfg.output}")
+    print(f"Saved {n} embeddings to {repr(output)}")
 
 
 if __name__ == "__main__":
