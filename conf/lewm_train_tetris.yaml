@@ -42,9 +42,6 @@ encoder_scale: tiny
 dump_object: True
 normalize_pixels: True
 
-big_batch_accum:
-  n_splits: 1
-
 trainer:
   default_root_dir: outputs
   max_epochs: 100

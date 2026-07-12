@@ -297,86 +297,24 @@ def lejepa_forward(self, batch, stage, cfg):
     # Replace NaN values with 0 (occurs at sequence boundaries)
     # batch["action"] = torch.nan_to_num(batch["action"], 0.0)
 
-    n_splits = OmegaConf.select(cfg, "big_batch_accum.n_splits", default=1)
+    output = self.model.encode(batch)
 
-    if n_splits > 1 and stage == "fit":
-        _big_batch = True
+    emb = output["emb"]  # (B, T, D)
+    act_emb = output["act_emb"]
 
-        A = torch.randn(cfg.wm.embed_dim, self.sigreg.num_proj, device=self.device)
-        A = F.normalize(A, p=2, dim=0)
+    ctx_emb = emb[:, :ctx_len]  # (B, ctx_len, D_ctx_emb)
+    ctx_act = act_emb[:, :ctx_len]  # (B, ctx_len, D_act_emb)
 
-        sub_size = b // n_splits
-        # Precompute sub-batch embeddings no_grad (matching sub-batch size for batchnorm consistency)
-        sub_embs_cache = []
-        rng_states = []
-        with torch.no_grad():
-            for i in range(n_splits):
-                rng_states.append(get_rng_state())
-                sub_batch = _split_batch(batch, i, sub_size, b)
-                sub_embs_cache.append(self.model.encode(sub_batch)["emb"])
+    tgt_emb = emb[:, n_preds:]  # label (B, n_preds, D_ctx_emb)
+    pred_emb = self.model.predict(ctx_emb, ctx_act)  # pred (B, n_preds, D_ctx_emb)
 
-                # scramble RNG state a little
-                torch.randn(100)
-
-        total_pred_loss = torch.tensor(0., device=sub_embs_cache[0].device)
-        total_sigreg_loss = torch.tensor(0., device=sub_embs_cache[0].device)
-
-        for i, rng_state in zip(range(n_splits), rng_states):
-            set_rng_state(*rng_state)
-
-            sub_batch = _split_batch(batch, i, sub_size, b)
-            sub_out = self.model.encode(sub_batch)
-            sub_emb = sub_out["emb"]
-            sub_act_emb = sub_out["act_emb"]
-
-            sub_ctx_emb = sub_emb[:, :ctx_len]
-            sub_ctx_act = sub_act_emb[:, :ctx_len]
-            sub_tgt_emb = sub_emb[:, n_preds:]
-            sub_pred_emb = self.model.predict(sub_ctx_emb, sub_ctx_act)
-
-            pred_loss = (sub_pred_emb - sub_tgt_emb).pow(2).mean()
-            loss = pred_loss
-
-            if lambd > 0:
-                sigreg_loss = self.sigreg([
-                    a.transpose(0, 1) for a in
-                    [*sub_embs_cache[:i], sub_emb, *sub_embs_cache[i + 1:]]
-                ], A=A)
-                loss = loss + lambd * sigreg_loss
-                total_sigreg_loss = total_sigreg_loss + sigreg_loss.detach()
-
-            total_pred_loss = total_pred_loss + pred_loss.detach()
-            self.manual_backward(loss / n_splits)
-
-        output = {}
-        output["emb"] = torch.cat(sub_embs_cache, dim=0)  # (B, T, D), no_grad
-        output["pred_loss"] = total_pred_loss / n_splits
-        if lambd > 0:
-            output["sigreg_loss"] = total_sigreg_loss / n_splits
-    else:
-        _big_batch = False
-
-        output = self.model.encode(batch)
-
-        emb = output["emb"]  # (B, T, D)
-        act_emb = output["act_emb"]
-
-        ctx_emb = emb[:, :ctx_len]  # (B, ctx_len, D_ctx_emb)
-        ctx_act = act_emb[:, :ctx_len]  # (B, ctx_len, D_act_emb)
-
-        tgt_emb = emb[:, n_preds:]  # label (B, n_preds, D_ctx_emb)
-        pred_emb = self.model.predict(ctx_emb, ctx_act)  # pred (B, n_preds, D_ctx_emb)
-
-        output["pred_loss"] = (pred_emb - tgt_emb).pow(2).mean()
-        if lambd > 0:
-            output["sigreg_loss"] = self.sigreg(emb.transpose(0, 1))
+    output["pred_loss"] = (pred_emb - tgt_emb).pow(2).mean()
+    if lambd > 0:
+        output["sigreg_loss"] = self.sigreg(emb.transpose(0, 1))
 
     # Loss balancing
     pred_loss_mul = 1
     if OmegaConf.select(cfg, "loss_balancing.enabled", default=False):
-        if _big_batch:
-            raise RuntimeError("Unsupported")
-
         alpha = cfg.loss_balancing.alpha
         mul = cfg.loss_balancing.mul
 
@@ -451,12 +389,7 @@ def lejepa_forward(self, batch, stage, cfg):
     self.log_dict(logs, on_step=True, sync_dist=True)
 
     # NOTE: This has to happen _after_ logging to wandb.
-    if _big_batch:
-        # All sub-batches already backpropped in the loop above; return a leaf zero so
-        # training_step's manual_backward is a no-op w.r.t. model parameters
-        output["loss"] = torch.zeros([], device=output["emb"].device, requires_grad=True)
-    else:
-        output["loss"] = self.rescale_loss_for_grad_acc(output["loss"])
+    output["loss"] = self.rescale_loss_for_grad_acc(output["loss"])
 
     return output
 
