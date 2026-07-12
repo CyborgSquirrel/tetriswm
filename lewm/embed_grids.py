@@ -90,7 +90,7 @@ def main(cfg: DictConfig):
     first_mask = first_batch["tetris_grid_mask"]  # (B, 1, W, H)
     grid_w, grid_h = first_mask.shape[-2], first_mask.shape[-1]
 
-    output = os.path.join(os.path.subdir(cfg.checkpoint), "embeddings.h5")
+    output = os.path.join(os.path.dirname(cfg.checkpoint), "embeddings.h5")
 
     with ctl.ExitStack() as stack:
         f = stack.enter_context(h5py.File(output, "w"))
