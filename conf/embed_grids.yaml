@@ -5,4 +5,5 @@ dataset:
 # n: ???
 batch_size: 4096
 seed: 41
+device: cuda
 # output: embeddings.h5

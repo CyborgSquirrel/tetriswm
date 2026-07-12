@@ -33,8 +33,8 @@ from tetris.tetris import Tetris
 from utils import LazyDataset
 
 
-def load_model(path):
-    model = torch.load(path, weights_only=False, map_location="cpu")
+def load_model(path, device):
+    model = torch.load(path, weights_only=False, map_location=device)
     if hasattr(model, "model"):
         model = model.model
     return model.eval().requires_grad_(False)
@@ -65,7 +65,7 @@ def encode_single(model, pixels, img_size):
 @hydra.main(config_path="../conf", config_name="embed_grids", version_base=None)
 def main(cfg: DictConfig):
     rng = np.random.default_rng(cfg.seed)
-    model = load_model(cfg.checkpoint)
+    model = load_model(cfg.checkpoint, cfg.device)
 
     dataset = swm.data.HDF5Dataset(
         name=cfg.dataset.name,
