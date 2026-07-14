@@ -11,7 +11,7 @@ from functools import partial
 from pathlib import Path
 
 # Make dinowm models importable
-sys.path.insert(0, str(Path(__file__).parent.parent / "dinowm"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dinowm"))
 
 import wandb
 import hydra
