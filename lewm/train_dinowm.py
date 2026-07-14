@@ -11,7 +11,7 @@ from functools import partial
 from pathlib import Path
 
 # Make dinowm models importable
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dinowm"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dinowm" / "models"))
 
 import wandb
 import hydra
@@ -27,9 +27,9 @@ from lightning.pytorch.loggers import WandbLogger
 from omegaconf import OmegaConf, open_dict
 from torchvision import transforms
 
-from models.dino import DinoV2Encoder
-from models.vit import ViTPredictor
-from models.proprio import ProprioceptiveEmbedding
+from dino import DinoV2Encoder
+from vit import ViTPredictor
+from proprio import ProprioceptiveEmbedding
 
 from train import (
     LearningRateMonitor,
