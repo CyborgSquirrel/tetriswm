@@ -67,6 +67,7 @@ def dinowm_forward(self, batch, stage, cfg):
 
     pixels = batch["pixels"]  # (B, T, C, H, W)
     action = batch["action"].to(pixels.dtype)  # (B, T, act_dim * frameskip)
+    emb = None
 
     # Encode all T frames with frozen DINO → (B, T, P, D)
     with torch.no_grad():
@@ -74,6 +75,15 @@ def dinowm_forward(self, batch, stage, cfg):
         pixels_flat = rearrange(pixels, "b t c h w -> (b t) c h w")
         patch_embs_flat = self.model.encoder(pixels_flat)  # (B*T, P, D)
         patch_embs = rearrange(patch_embs_flat, "(b t) p d -> b t p d", b=b, t=t_size)
+
+        if self.patch_projector is not None:
+            dims = {}
+            dims["b"], dims["t"], dims["p"], *_ = patch_embs.shape
+
+            emb = patch_embs
+            emb = rearrange(emb, "b t p d -> (b t p) d")
+            emb = self.patch_projector(emb)
+            emb = rearrange(emb, "(b t p) d -> b t (p d)", **dims)
 
     # Action embedding → (B, T, D)
     act_emb = self.model.action_encoder(action)
@@ -93,9 +103,6 @@ def dinowm_forward(self, batch, stage, cfg):
     # MSE on visual patch tokens only (exclude the action token at index -1)
     z_pred_visual = z_pred[:, :, :-1, :]  # (B, ctx_len, P, D)
     pred_loss = F.mse_loss(z_pred_visual, z_tgt.detach())
-
-    # Mean-pool patches for probe compatibility: (B, T, D)
-    emb = patch_embs[:, :ctx_len].mean(dim=2)
 
     output = {
         "emb": emb,
@@ -178,13 +185,22 @@ def run(cfg):
         action_encoder=action_encoder,
     )
 
+    patch_projector = None
+    if OmegaConf.select(cfg, "wm.patch_projector.enabled", default=False):
+        proj_dim = cfg.wm.patch_projector.dim
+        patch_projector = nn.Linear(dino_dim, proj_dim)
+        probe_embed_dim = num_patches * proj_dim
+    else:
+        probe_embed_dim = dino_dim
+
     with open_dict(cfg):
-        cfg.wm.embed_dim = dino_dim
+        cfg.wm.embed_dim = probe_embed_dim
         cfg["num_params"] = sum(p.numel() for p in world_model.parameters() if p.requires_grad)
 
     data_module = spt.data.DataModule(train=train, val=val)
     module = spt.Module(
         model=world_model,
+        patch_projector=patch_projector,
         forward=partial(dinowm_forward, cfg=cfg),
         optim=OmegaConf.to_container(cfg.optimizers, resolve=True),
     )

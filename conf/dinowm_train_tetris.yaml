@@ -63,6 +63,12 @@ wm:
   history_size: 3
   num_preds: 1
   embed_dim: 384              # set dynamically in train_dinowm.py, kept here for probes
+  patch_projector:
+    enabled: false
+    # type: linear # or mlp
+    # weights: shared # or indep
+    # dim: 4
+    # hidden_dim: null
 
 predictor:
   depth: 6
