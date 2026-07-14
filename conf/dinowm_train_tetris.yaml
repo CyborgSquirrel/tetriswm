@@ -1,0 +1,102 @@
+defaults:
+  - _self_
+  - tetris: ???
+  - action_rank: tetris
+  - optimizers: default
+
+data:
+  dataset:
+    num_steps: ${eval:'${wm.num_preds} + ${wm.history_size}'}
+    frameskip: 1
+    name: ${tetris.out}
+    keys_to_load:
+      - pixels
+      - action
+      - tetris_grid_mask
+      - tetris_queue
+    keys_to_cache:
+      - action
+
+output_model_name: dinowm
+checkpoint_interval: ${eval:'max(1, ${trainer.max_epochs} // 10)'}
+subdir: ${now:%s}_${hydra:job.id}
+resume_from: null
+
+train_split:
+  by: window
+  p: 0.9
+
+num_workers: 6
+seed: 3072
+img_size: 224
+patch_size: 14  # DINO vits14
+dump_object: True
+normalize_pixels: True
+
+trainer:
+  default_root_dir: outputs
+  max_epochs: 100
+  devices: auto
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+
+loader:
+  batch_size: 64
+  num_workers: ${num_workers}
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+
+wandb:
+  enabled: True
+  config:
+    entity: andrei-jardan-technical-university-of-munich
+    project: genai-tetris
+    name: ${output_model_name}
+    id: ${subdir}
+    resume: allow
+    log_model: False
+
+wm:
+  dino_model: dinov2_vits14   # emb_dim=384, patch_size=14
+  history_size: 3
+  num_preds: 1
+  embed_dim: 384              # set dynamically in train_dinowm.py, kept here for probes
+
+predictor:
+  depth: 6
+  heads: 16
+  mlp_dim: 2048
+  dim_head: 64
+  dropout: 0.1
+  emb_dropout: 0.0
+
+grid_mask_probe:
+  enabled: True
+  grid_width: ${tetris.tetris.width}
+  grid_height: ${tetris.tetris.height}
+  checkpoint_interval: ${checkpoint_interval}
+  reset_interval: null
+  preview_images: 8
+  model:
+    type: linear
+    hidden_dim: 512
+    num_layers: 2
+  optimizer:
+    lr: 1e-3
+    weight_decay: 1e-4
+
+queue_probe:
+  enabled: ${eval:'${tetris.tetris.queue_len} > 0'}
+  queue_len: ${tetris.tetris.queue_len}
+  num_classes: 7
+  checkpoint_interval: ${checkpoint_interval}
+  reset_interval: null
+  model:
+    type: linear
+    hidden_dim: 512
+    num_layers: 2
+  optimizer:
+    lr: 1e-3
+    weight_decay: 1e-4
