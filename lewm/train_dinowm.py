@@ -66,7 +66,7 @@ def dinowm_forward(self, batch, stage, cfg):
     n_preds = cfg.wm.num_preds
 
     pixels = batch["pixels"]  # (B, T, C, H, W)
-    action = batch["action"]  # (B, T, act_dim * frameskip)
+    action = batch["action"].to(pixels.dtype)  # (B, T, act_dim * frameskip)
 
     # Encode all T frames with frozen DINO → (B, T, P, D)
     with torch.no_grad():
