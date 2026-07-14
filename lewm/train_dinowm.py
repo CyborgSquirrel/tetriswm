@@ -85,23 +85,32 @@ def dinowm_forward(self, batch, stage, cfg):
             emb = self.patch_projector(emb)
             emb = rearrange(emb, "(b t p) d -> b t (p d)", **dims)
 
-    # Action embedding → (B, T, D)
+    # Action embedding → (B, T, action_emb_dim)
     act_emb = self.model.action_encoder(action)
 
-    # Append action as an extra token per frame → (B, T, P+1, D)
-    z = torch.cat([patch_embs, act_emb.unsqueeze(2)], dim=2)
+    concat_dim = cfg.wm.concat_dim
+    if concat_dim == 1:
+        # Tile action across patches, concat along feature dim → (B, T, P, dino_dim + action_emb_dim)
+        act_repeated = act_emb.unsqueeze(2).expand(-1, -1, patch_embs.shape[2], -1)
+        z = torch.cat([patch_embs, act_repeated], dim=3)
+    else:
+        # Append action as an extra token per frame → (B, T, P+1, dino_dim)
+        z = torch.cat([patch_embs, act_emb.unsqueeze(2)], dim=2)
 
-    # Source: first ctx_len frames; Target: DINO visual tokens shifted by n_preds
-    z_src = z[:, :ctx_len]           # (B, ctx_len, P+1, D)
-    z_tgt = patch_embs[:, n_preds:]  # (B, ctx_len, P, D)
+    z_src = z[:, :ctx_len]
+    z_tgt = patch_embs[:, n_preds:]  # (B, ctx_len, P, dino_dim)
 
     # Flatten T*P for ViTPredictor, then unflatten
     z_src_flat = rearrange(z_src, "b t p d -> b (t p) d")
     z_pred_flat = self.model.predictor(z_src_flat)
     z_pred = rearrange(z_pred_flat, "b (t p) d -> b t p d", t=ctx_len)
 
-    # MSE on visual patch tokens only (exclude the action token at index -1)
-    z_pred_visual = z_pred[:, :, :-1, :]  # (B, ctx_len, P, D)
+    # MSE on visual patch tokens only
+    if concat_dim == 1:
+        dino_dim = cfg.wm.dino_dim
+        z_pred_visual = z_pred[:, :, :, :dino_dim]  # (B, ctx_len, P, dino_dim)
+    else:
+        z_pred_visual = z_pred[:, :, :-1, :]  # exclude action token
     pred_loss = F.mse_loss(z_pred_visual, z_tgt.detach())
 
     output = {
@@ -166,16 +175,26 @@ def run(cfg):
     num_patches_with_action = num_patches + 1  # +1 for the action token
 
     effective_act_dim = cfg.data.dataset.frameskip * cfg.wm.action_dim
+    concat_dim = OmegaConf.select(cfg, "wm.concat_dim", default=0)
+    if concat_dim == 1:
+        action_emb_dim = cfg.wm.action_emb_dim
+        predictor_dim = dino_dim + action_emb_dim
+        num_patches_for_pred = num_patches
+    else:
+        action_emb_dim = dino_dim
+        predictor_dim = dino_dim
+        num_patches_for_pred = num_patches_with_action
+
     action_encoder = ProprioceptiveEmbedding(
         num_frames=cfg.wm.history_size,
         in_chans=effective_act_dim,
-        emb_dim=dino_dim,
+        emb_dim=action_emb_dim,
     )
 
     predictor = ViTPredictor(
-        num_patches=num_patches_with_action,
+        num_patches=num_patches_for_pred,
         num_frames=cfg.wm.history_size,
-        dim=dino_dim,
+        dim=predictor_dim,
         **cfg.predictor,
     )
 
@@ -195,6 +214,8 @@ def run(cfg):
 
     with open_dict(cfg):
         cfg.wm.embed_dim = probe_embed_dim
+        cfg.wm.dino_dim = dino_dim
+        cfg.wm.concat_dim = concat_dim
         cfg["num_params"] = sum(p.numel() for p in world_model.parameters() if p.requires_grad)
 
     data_module = spt.data.DataModule(train=train, val=val)

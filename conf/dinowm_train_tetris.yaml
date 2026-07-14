@@ -63,6 +63,8 @@ wm:
   history_size: 3
   num_preds: 1
   embed_dim: 384              # set dynamically in train_dinowm.py, kept here for probes
+  concat_dim: 1               # 0=action as extra token, 1=action tiled along feature dim
+  action_emb_dim: 64          # action encoder output dim (only used when concat_dim=1)
   patch_projector:
     enabled: false
     # type: linear # or mlp
