@@ -21,6 +21,7 @@ from sklearn import preprocessing
 from torchvision.transforms import v2 as transforms
 import stable_worldmodel as swm
 import tetris.gym_env  # noqa: F401 — registers tetris/Tetris-v1 with gymnasium
+import dinowm_model  # noqa: F401 — needed so torch.load can unpickle DinoWM checkpoints
 
 def img_transform(cfg):
     transform = []
