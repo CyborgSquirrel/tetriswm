@@ -2,11 +2,15 @@
 regardless of which script is __main__."""
 
 import sys
+import glob
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dinowm" / "models"))
 
 import torch
+
+for _d in glob.glob(str(Path(torch.hub.get_dir()) / "facebookresearch_dinov2*")):
+    sys.path.insert(0, _d)
 import torch.nn as nn
 from einops import rearrange
 
