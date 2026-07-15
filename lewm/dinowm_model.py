@@ -32,6 +32,9 @@ class DinoWM(nn.Module):
         self.concat_dim = concat_dim
         self.frameskip = frameskip
 
+    def get_cost(self, info_dict, action_candidates):
+        raise NotImplementedError("DinoWM uses BeamSearchSolver directly; get_cost is not supported.")
+
     def action_trans(self, x):
         """Tile action by frameskip along the last dim."""
         return x.repeat(1, 1, self.frameskip) if self.frameskip > 1 else x
