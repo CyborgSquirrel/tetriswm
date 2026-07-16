@@ -1,12 +1,18 @@
-out: tetris_overfit_t5_5
+name: overfit_t5_5
+out: tetris_${.name}
+seed: 42
+
 traj_num: 5
 traj_len: 5
-seed: 42
+
+policy:
+  _target_: tetris_policy.RandomPolicy
 
 tetris:
   width: 8
   height: 12
   render_size: 126
+  queue_len: 0
   mino_generator:
     _target_: tetris.tetris.BagGenerator
     minoes: [I]

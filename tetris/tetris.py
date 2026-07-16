@@ -299,6 +299,7 @@ class GtDynamics:
         self.current: Mino | None = None
         self.state = GameState.RUNNING
         self.cleared_rows = 0
+        self.last_cleared_rows = 0
 
         self.mino_generator = (
             mino_generator
@@ -369,6 +370,8 @@ class GtDynamics:
             return
 
     def _step(self, action: Action):
+        self.last_cleared_rows = 0
+
         if self.state == GameState.OVER:
             return
 
@@ -422,6 +425,7 @@ class GtDynamics:
             empty_tiles_num = np.sum(self.grid[:,y] == 0)
             if empty_tiles_num == 0:
                 self.cleared_rows += 1
+                self.last_cleared_rows += 1
                 dy += 1
             else:
                 if dy > 0:

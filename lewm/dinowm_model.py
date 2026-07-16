@@ -37,7 +37,7 @@ class DinoWM(nn.Module):
 
     def action_trans(self, x):
         """Tile action by frameskip along the last dim."""
-        return x.repeat(1, 1, self.frameskip) if self.frameskip > 1 else x
+        return x.repeat(1, 1, self.frameskip)
 
     def encode_pixels(self, pixels):
         """Encode pixels to flattened DINO patch tokens → (B, T, P*D_patch)."""

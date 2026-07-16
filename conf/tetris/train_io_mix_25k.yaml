@@ -1,5 +1,5 @@
 name: train_io_mix_25k
-out: tetris_${name}
+out: tetris_${.name}
 seed: 42
 mix: true
 

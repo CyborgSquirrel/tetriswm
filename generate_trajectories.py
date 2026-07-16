@@ -30,6 +30,7 @@ def main(cfg: DictConfig):
   keys["tetris_grid_mask"] = { "image": True }
   keys["tetris_mino_mask"] = { "image": True }
   keys["tetris_queue"] = {}
+  keys["last_cleared_rows"] = {}
   keys["action"] = {}
   keys["ep_len"] = {}
   keys["ep_idx"] = {}
@@ -76,12 +77,10 @@ def main(cfg: DictConfig):
     env_weights = []
     if not OmegaConf.select(cfg, "mix", default=False):
       env_weights.append(1)
-      env_cfgs = [
-        dict(
-          policy=cfg.policy,
-          tetris=cfg.tetris,
-        )
-      ]
+      env_cfg = OmegaConf.create()
+      env_cfg.policy = cfg.policy
+      env_cfg.tetris = cfg.tetris
+      env_cfgs = [ env_cfg ]
     else:
       env_cfgs = list(cfg.envs)
       for env in env_cfgs:
@@ -129,6 +128,9 @@ def main(cfg: DictConfig):
         data["tetris_queue"].append(env.queue.astype(np.uint8))
 
         dyn = env.dynamics
+
+        data["last_cleared_rows"].append(np.int16(dyn.last_cleared_rows))
+
         data["state_placed_grid"].append(dyn.grid.copy())
         data["state_mino_coords"].append(dyn.current.coords.astype(np.int16))
         data["state_mino_half"].append(dyn.current.half.astype(np.int16))

@@ -1,0 +1,9 @@
+all_opt:
+  modules: "model|idm"
+  optimizer:
+    type: Adam
+    lr: 0.0028
+    weight_decay: 1e-6
+  scheduler:
+    type: LinearWarmupCosineAnnealingLR
+  interval: epoch
