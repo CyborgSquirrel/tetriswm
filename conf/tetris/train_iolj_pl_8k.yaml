@@ -6,7 +6,14 @@ traj_num: 8000
 traj_len: 1000
 
 policy:
-  _target_: tetris_policy.ElTetrisPolicy
+  _target_: tetris_policy.MixPolicy
+  policies:
+    - w: 10
+      p:
+        _target_: tetris_policy.RandomPolicy
+    - w: 1
+      p:
+        _target_: tetris_policy.ElTetrisPolicy
 
 tetris:
   width: 8
