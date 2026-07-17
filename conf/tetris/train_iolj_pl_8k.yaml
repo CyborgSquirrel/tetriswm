@@ -1,0 +1,18 @@
+name: test_iolj
+out: tetris_${.name}
+seed: 42
+
+traj_num: 8000
+traj_len: 1000
+
+policy:
+  _target_: tetris_policy.ElTetrisPolicy
+
+tetris:
+  width: 8
+  height: 12
+  render_size: 126
+  queue_len: 5
+  mino_generator:
+    _target_: tetris.tetris.BagGenerator
+    minoes: [I,O,L,J]
