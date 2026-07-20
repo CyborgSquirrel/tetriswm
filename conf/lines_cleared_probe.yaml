@@ -8,11 +8,7 @@ data:
     frameskip: 1
     name: ${tetris.out}
     keys_to_load:
-      - pixels
-      - action
       - last_cleared_rows
-    keys_to_cache:
-      - action
 
 train_split:
   by: window

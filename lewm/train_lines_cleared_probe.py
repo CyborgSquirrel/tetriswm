@@ -1,12 +1,14 @@
 from pathlib import Path
 import os.path
 
+import hdf5plugin  # noqa: F401
 import wandb
 from tqdm import tqdm
 import hydra
 import lightning as pl
 import stable_pretraining as spt
 import stable_worldmodel as swm
+from stable_worldmodel.data.utils import get_cache_dir
 import torch
 import torch.nn.functional as F
 from einops import rearrange
@@ -16,12 +18,77 @@ from omegaconf import OmegaConf, open_dict
 from utils import get_img_preprocessor, ModelObjectCallBack, split_dataset
 
 
-def build_dataloaders(cfg):
-    dataset = swm.data.HDF5Dataset(**cfg.data.dataset, transform=None)
-    transforms = [
-        get_img_preprocessor(source="pixels", target="pixels", img_size=cfg.img_size)
-    ]
-    dataset.transform = spt.data.transforms.Compose(*transforms)
+class GraftedLatentsDataset(torch.utils.data.Dataset):
+    """Wraps an HDF5Dataset and injects pre-computed latents per window."""
+
+    def __init__(self, hdf5_dataset, latents):
+        self.inner = hdf5_dataset
+        self.latents = latents  # (N_total_frames, D)
+
+    def __len__(self):
+        return len(self.inner)
+
+    def __getitem__(self, idx):
+        item = self.inner[idx]
+        ep_idx, start = self.inner.clip_indices[idx]
+        g_start = int(self.inner.offsets[ep_idx]) + start
+        span = self.inner.span
+        frameskip = self.inner.frameskip
+        item["latents"] = self.latents[g_start:g_start + span:frameskip]  # (T, D)
+        return item
+
+    @property
+    def clip_indices(self):
+        return self.inner.clip_indices
+
+    @property
+    def lengths(self):
+        return self.inner.lengths
+
+
+def encode_and_save_latents(world_model, cfg):
+    """Encode all pixels (T=1) and save latents as a .pt file next to the world model."""
+    latents_path = Path(os.path.splitext(cfg.world_model_path)[0] + "_latents.pt")
+
+    if latents_path.exists():
+        print(f"Loading cached latents from {latents_path}")
+        return torch.load(latents_path, map_location="cpu", weights_only=True)
+
+    pixel_dataset = swm.data.HDF5Dataset(
+        name=cfg.data.dataset.name,
+        num_steps=1,
+        frameskip=cfg.data.dataset.frameskip,
+        keys_to_load=["pixels"],
+        transform=spt.data.transforms.Compose(
+            get_img_preprocessor(source="pixels", target="pixels", img_size=cfg.img_size)
+        ),
+    )
+    loader = torch.utils.data.DataLoader(
+        pixel_dataset, **cfg.wm_loader,
+        shuffle=False, drop_last=False,
+    )
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    world_model = world_model.to(device)
+
+    all_latents = []
+    print("Encoding all frames...")
+    with torch.no_grad():
+        for batch in tqdm(loader):
+            pixels = batch["pixels"].to(device)  # (B, 1, C, H, W)
+            info = {"pixels": pixels}
+            world_model.encode(info)
+            all_latents.append(info["emb"][:, 0].float().cpu())  # (B, D)
+
+    latents = torch.cat(all_latents)  # (N_total, D)
+    torch.save(latents, latents_path)
+    print(f"Saved latents to {latents_path}")
+    return latents
+
+
+def build_dataloaders(cfg, latents):
+    hdf5_dataset = swm.data.HDF5Dataset(**cfg.data.dataset, transform=None)
+    dataset = GraftedLatentsDataset(hdf5_dataset, latents)
 
     rnd_gen = torch.Generator().manual_seed(cfg.seed)
     train_set, val_set = split_dataset(cfg.train_split, dataset, rnd_gen=rnd_gen)
@@ -35,66 +102,6 @@ def build_dataloaders(cfg):
         shuffle=False, drop_last=False,
     )
     return spt.data.DataModule(train=train, val=val)
-
-
-def cache_embeddings(world_model, dataloader, cfg, device):
-    """Run the frozen world model over consecutive pairs and return (paired_latents, labels)."""
-    world_model = world_model.to(device)
-    all_latents, all_labels = [], []
-    with torch.no_grad():
-        for batch in tqdm(dataloader):
-            pixels = batch["pixels"].to(device)   # (B, T=2, C, H, W)
-            # last_cleared_rows at index 1: lines cleared transitioning from step 0 to step 1
-            labels = batch["last_cleared_rows"][:, 1].long()  # (B,)
-
-            info = {"pixels": pixels}
-            world_model.encode(info)
-            emb = info["emb"]  # (B, T=2, D)
-
-            paired = rearrange(emb, "b t d -> b (t d)").cpu()  # (B, 2*D)
-            all_latents.append(paired)
-            all_labels.append(labels.cpu())
-
-    return torch.cat(all_latents), torch.cat(all_labels)
-
-
-def build_cached_dataloaders(world_model, raw_dm, cfg):
-    cache_path = Path(os.path.splitext(cfg.world_model_path)[0] + "_lines_cleared_emb.pt")
-
-    if not cache_path.exists():
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print("Caching train embeddings...")
-        train_latents, train_labels = cache_embeddings(world_model, raw_dm.train_dataloader(), cfg, device)
-        print("Caching val embeddings...")
-        val_latents, val_labels = cache_embeddings(world_model, raw_dm.val_dataloader(), cfg, device)
-
-        print(f"Saving cached embeddings to {repr(str(cache_path))}")
-        torch.save(
-            {
-                "train_latents": train_latents, "train_labels": train_labels,
-                "val_latents": val_latents, "val_labels": val_labels,
-            },
-            cache_path,
-        )
-    else:
-        print(f"Loading cached embeddings from {repr(str(cache_path))}")
-        saved = torch.load(cache_path, map_location="cpu", weights_only=True)
-        train_latents, train_labels = saved["train_latents"], saved["train_labels"]
-        val_latents, val_labels = saved["val_latents"], saved["val_labels"]
-
-    rnd_gen = torch.Generator().manual_seed(cfg.seed)
-    train_ds = torch.utils.data.TensorDataset(train_latents, train_labels)
-    val_ds = torch.utils.data.TensorDataset(val_latents, val_labels)
-    loader_cfg = OmegaConf.to_container(cfg.probe_loader, resolve=True)
-    train_loader = torch.utils.data.DataLoader(
-        train_ds, **loader_cfg,
-        shuffle=True, drop_last=True, generator=rnd_gen,
-    )
-    val_loader = torch.utils.data.DataLoader(
-        val_ds, **loader_cfg,
-        shuffle=False, drop_last=False,
-    )
-    return spt.data.DataModule(train=train_loader, val=val_loader)
 
 
 def load_world_model(path):
@@ -127,7 +134,9 @@ class LinesClearedProbeModule(pl.LightningModule):
         self.num_classes = cfg.num_classes
 
     def _step(self, stage, batch, batch_idx):
-        latents, labels = batch  # (B, 2*D), (B,)
+        latents = rearrange(batch["latents"], "b t d -> b (t d)")  # (B, 2*D)
+        labels = batch["last_cleared_rows"][:, 1].long()           # (B,)
+
         logits = self.probe(latents)  # (B, num_classes)
         loss = F.cross_entropy(logits, labels)
 
@@ -163,13 +172,14 @@ class LinesClearedProbeModule(pl.LightningModule):
 @hydra.main(version_base=None, config_path="../conf", config_name="lines_cleared_probe")
 def run(cfg):
     world_model = load_world_model(cfg.world_model_path)
-    raw_dm = build_dataloaders(cfg)
-    data_module = build_cached_dataloaders(world_model, raw_dm, cfg)
+
+    latents = encode_and_save_latents(world_model, cfg)
+    data_module = build_dataloaders(cfg, latents)
 
     probe = torch.nn.Linear(2 * cfg.lines_cleared_probe.embed_dim, cfg.lines_cleared_probe.num_classes)
 
     run_id = cfg.get("subdir") or ""
-    run_dir = Path(swm.data.utils.get_cache_dir(), run_id)
+    run_dir = Path(get_cache_dir(), run_id)
     run_dir.mkdir(parents=True, exist_ok=True)
     with open_dict(cfg):
         cfg.run_dir = str(run_dir)
