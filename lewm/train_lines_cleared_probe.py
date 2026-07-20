@@ -130,6 +130,7 @@ class LinesClearedProbeModule(pl.LightningModule):
     def __init__(self, probe, cfg):
         super().__init__()
         self.probe = probe
+        self.model = probe
         self.cfg = cfg
         self.num_classes = cfg.num_classes
 
