@@ -47,6 +47,8 @@ def parse_args():
     parser.add_argument("--wm",           action=AppendGame, game_type="wm", dest="games")
     parser.add_argument("--world-model",  action=SetGameParam, metavar="PATH")
     parser.add_argument("--grid-probe",   action=SetGameParam, metavar="PATH")
+    parser.add_argument("--reanchor-every", type=int, default=None, metavar="N",
+                        help="Reanchor WM games to ground truth every N steps")
     parser.set_defaults(games=None)
     return parser.parse_args()
 
@@ -78,6 +80,7 @@ def main():
 
     games = make_games(args)
     scale = args.scale
+    step_count = 0
 
     surf = pygame.display.set_mode((224 * scale * len(games), 224 * scale))
     pygame.display.set_caption("tetris")
@@ -91,6 +94,7 @@ def main():
                     return
                 if event.key == pygame.K_r:
                     games = make_games(args)
+                    step_count = 0
                     continue
                 if event.key == pygame.K_t:
                     for game in games:
@@ -101,6 +105,12 @@ def main():
                 if action is not None:
                     for game in games:
                         game.step(action)
+                    step_count += 1
+                    if args.reanchor_every and step_count % args.reanchor_every == 0:
+                        for game in games:
+                            if isinstance(game.dynamics, WmDynamics):
+                                game.dynamics._reanchor_to_gt()
+                                game.dynamics._update_parent()
 
         frames = [game.render() for game in games]
         img = np.concatenate(frames, axis=0)
