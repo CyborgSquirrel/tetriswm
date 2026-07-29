@@ -2,7 +2,6 @@ from tetris.tetris import Action, GameState, Tetris, WmDynamics
 import argparse
 import os
 
-import numpy as np
 import pygame
 from omegaconf import OmegaConf
 
@@ -38,6 +37,14 @@ class SetGameParam(argparse.Action):
         games[-1][self.dest] = values
 
 
+def hex_color(s: str) -> tuple[int, int, int]:
+    s = s.lstrip("#")
+    try:
+        return pygame.Color(f"#{s}")[:3]
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected hex color, got {s!r}")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Play Tetris")
     parser.add_argument("--scale",        type=int, default=4)
@@ -49,6 +56,10 @@ def parse_args():
     parser.add_argument("--grid-probe",   action=SetGameParam, metavar="PATH")
     parser.add_argument("--reanchor-every", type=int, default=None, metavar="N",
                         help="Reanchor WM games to ground truth every N steps")
+    parser.add_argument("--gap",          type=int, default=0, metavar="PX",
+                        help="Gap in pixels between game views")
+    parser.add_argument("--gap-color",    type=hex_color, default=(0, 0, 0), metavar="HEX",
+                        help="Background color for the gap between game views (e.g. ff8800)")
     parser.set_defaults(games=None)
     return parser.parse_args()
 
@@ -80,9 +91,12 @@ def main():
 
     games = make_games(args)
     scale = args.scale
+    gap = args.gap
     step_count = 0
 
-    surf = pygame.display.set_mode((224 * scale * len(games), 224 * scale))
+    game_size = 224 * scale
+    win_width = game_size * len(games) + gap * (len(games) - 1)
+    surf = pygame.display.set_mode((win_width, game_size))
     pygame.display.set_caption("tetris")
 
     while True:
@@ -112,11 +126,13 @@ def main():
                                 game.dynamics._reanchor_to_gt()
                                 game.dynamics._update_parent()
 
-        frames = [game.render() for game in games]
-        img = np.concatenate(frames, axis=0)
-        tile_surf = pygame.surfarray.make_surface(img)
-        scaled = pygame.transform.scale(tile_surf, (224 * scale * len(games), 224 * scale))
-        surf.blit(scaled, (0, 0))
+        surf.fill(args.gap_color)
+        x = 0
+        for game in games:
+            tile_surf = pygame.surfarray.make_surface(game.render())
+            scaled = pygame.transform.scale(tile_surf, (game_size, game_size))
+            surf.blit(scaled, (x, 0))
+            x += game_size + gap
         pygame.display.flip()
 
 
