@@ -54,6 +54,7 @@ def parse_args():
     parser.add_argument("--wm",           action=AppendGame, game_type="wm", dest="games")
     parser.add_argument("--world-model",  action=SetGameParam, metavar="PATH")
     parser.add_argument("--grid-probe",   action=SetGameParam, metavar="PATH")
+    parser.add_argument("--queue-probe",  action=SetGameParam, metavar="PATH")
     parser.add_argument("--reanchor-every", type=int, default=None, metavar="N",
                         help="Reanchor WM games to ground truth every N steps")
     parser.add_argument("--gap",          type=int, default=0, metavar="PX",
@@ -78,6 +79,7 @@ def make_games(args) -> list[Tetris]:
             dynamics = WmDynamics(
                 world_model_path=spec["world_model"],
                 grid_probe_path=spec["grid_probe"],
+                queue_probe_path=spec.get("queue_probe"),
                 gt_tetris=gt_tetris,
             )
             games.append(Tetris.from_config(cfg, dynamics=dynamics))

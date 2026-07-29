@@ -446,10 +446,15 @@ class WmDynamics:
         *,
         world_model_path: str,
         grid_probe_path: str,
+        queue_probe_path: Optional[str] = None,
         gt_tetris: 'Tetris',
     ):
         self.world_model = torch.load(world_model_path, weights_only=False, map_location="cpu").eval().requires_grad_(False)
         self.grid_probe = torch.load(grid_probe_path, weights_only=False, map_location="cpu").eval().requires_grad_(False)
+
+        self.queue_probe = None
+        if queue_probe_path is not None:
+            self.queue_probe = torch.load(queue_probe_path, weights_only=False, map_location="cpu").eval().requires_grad_(False)
 
         self.history_size = 3
 
@@ -482,6 +487,15 @@ class WmDynamics:
         grid = rearrange(grid, "1 1 (w h) -> w h", w=self.tetris.width, h=self.tetris.height)
         grid = grid.astype(np.uint8)
         self.tetris.grid = grid
+
+        if self.queue_probe is not None:
+            num_classes = len(MINO_SET.oid_to_obj)
+            logits = self.queue_probe(self.state_emb_hist[:, (-1,), :])
+            logits = rearrange(logits, "1 1 (q c) -> q c", c=num_classes)
+            queue = logits.argmax(dim=-1).numpy().astype(np.uint8)
+            self.tetris.queue = queue
+        else:
+            self.tetris.queue = np.array([], dtype=np.uint8)
 
     def embed_action(self, action: Optional[Action]):
         action_enc = torch.zeros(len(Action), dtype=torch.float32)
