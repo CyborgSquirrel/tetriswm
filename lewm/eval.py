@@ -86,17 +86,17 @@ def run(cfg: DictConfig):
     ep_indices, _ = np.unique(stats_dataset.get_col_data(col_name), return_index=True)
 
     process = {}
-    # for col in cfg.dataset.keys_to_cache:
-    #     if col in ["pixels"]:
-    #         continue
-    #     processor = preprocessing.StandardScaler()
-    #     col_data = stats_dataset.get_col_data(col)
-    #     col_data = col_data[~np.isnan(col_data).any(axis=1)]
-    #     processor.fit(col_data)
-    #     process[col] = processor
+    for col in cfg.dataset.keys_to_cache:
+        if col in ["pixels", "action"]:
+            continue
+        processor = preprocessing.StandardScaler()
+        col_data = stats_dataset.get_col_data(col)
+        col_data = col_data[~np.isnan(col_data).any(axis=1)]
+        processor.fit(col_data)
+        process[col] = processor
 
-    #     if col != "action":
-    #         process[f"goal_{col}"] = process[col]
+        if col != "action":
+            process[f"goal_{col}"] = process[col]
 
     # -- run evaluation
     policy = cfg.get("policy", "random")
