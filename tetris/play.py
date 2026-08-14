@@ -65,7 +65,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def make_games(args) -> list[Tetris]:
+def make_games(args) -> tuple[list[Tetris], Tetris]:
     cfg = OmegaConf.load(args.config).tetris if args.config else None
 
     gt_tetris = Tetris.from_config(cfg) if cfg else Tetris()
@@ -80,18 +80,18 @@ def make_games(args) -> list[Tetris]:
                 world_model_path=spec["world_model"],
                 grid_probe_path=spec["grid_probe"],
                 queue_probe_path=spec.get("queue_probe"),
-                gt_tetris=gt_tetris,
+                gt_dynamics=gt_tetris.dynamics,
             )
             games.append(Tetris.from_config(cfg, dynamics=dynamics))
 
-    return games
+    return games, gt_tetris
 
 
 def main():
     args = parse_args()
     pygame.init()
 
-    games = make_games(args)
+    games, gt_tetris = make_games(args)
     scale = args.scale
     gap = args.gap
     step_count = 0
@@ -109,7 +109,7 @@ def main():
                 if event.key == pygame.K_ESCAPE:
                     return
                 if event.key == pygame.K_r:
-                    games = make_games(args)
+                    games, gt_tetris = make_games(args)
                     step_count = 0
                     continue
                 if event.key == pygame.K_t:
@@ -119,8 +119,10 @@ def main():
                             game.dynamics._update_parent()
                 action = KEY_ACTION.get(event.key)
                 if action is not None:
+                    gt_tetris.step(action)
                     for game in games:
-                        game.step(action)
+                        if game is not gt_tetris:
+                            game.step(action)
                     step_count += 1
                     if args.reanchor_every and step_count % args.reanchor_every == 0:
                         for game in games:

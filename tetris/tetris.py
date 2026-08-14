@@ -180,6 +180,8 @@ TILE_O     = TILE_SET.add( TileDef(color=(240, 240, 0  )) )
 TILE_Z     = TILE_SET.add( TileDef(color=(240, 0  , 0  )) )
 TILE_S     = TILE_SET.add( TileDef(color=(0  , 240, 0  )) )
 TILE_T     = TILE_SET.add( TileDef(color=(160, 0  , 240)) )
+TILE_MISSING  = TILE_SET.add( TileDef(color=(255, 160, 255)) )
+TILE_EXTRA    = TILE_SET.add( TileDef(color=(128, 0  , 128)) )
 
 MINO_SET = ObjectSet()
 STR_TO_MINO = {}
@@ -447,7 +449,7 @@ class WmDynamics:
         world_model_path: str,
         grid_probe_path: str,
         queue_probe_path: Optional[str] = None,
-        gt_tetris: 'Tetris',
+        gt_dynamics: 'GtDynamics',
     ):
         self.world_model = torch.load(world_model_path, weights_only=False, map_location="cpu").eval().requires_grad_(False)
         self.grid_probe = torch.load(grid_probe_path, weights_only=False, map_location="cpu").eval().requires_grad_(False)
@@ -458,16 +460,18 @@ class WmDynamics:
 
         self.history_size = 3
 
-        self.gt_tetris = gt_tetris
+        self.gt_dynamics = gt_dynamics
 
     def _reanchor_to_gt(self):
         info = {}
 
-        pixels = torch.from_numpy(self.gt_tetris.render())
+        gt_tetris = self.gt_dynamics.tetris
+
+        pixels = torch.from_numpy(gt_tetris.render())
         pixels = rearrange(pixels, "w h c -> 1 1 c h w")
         info["pixels"] = pixels
 
-        transforms = [lewm.utils.get_img_preprocessor(source='pixels', target='pixels', img_size=self.gt_tetris.render_size)]
+        transforms = [lewm.utils.get_img_preprocessor(source='pixels', target='pixels', img_size=gt_tetris.render_size)]
         transform = spt.data.transforms.Compose(*transforms)
         info = transform(info)
 
@@ -481,11 +485,21 @@ class WmDynamics:
         self._update_parent()
 
     def _update_parent(self):
-        grid = self.grid_probe(self.state_emb_hist[:, (-1,), :])
-        grid = grid.sigmoid() > 0.5
-        grid = grid.numpy()
-        grid = rearrange(grid, "1 1 (w h) -> w h", w=self.tetris.width, h=self.tetris.height)
-        grid = grid.astype(np.uint8)
+        occupied = self.grid_probe(self.state_emb_hist[:, (-1,), :])
+        occupied = occupied.sigmoid() > 0.5
+        occupied = occupied.numpy()
+        occupied = rearrange(occupied, "1 1 (w h) -> w h", w=self.tetris.width, h=self.tetris.height)
+
+        tile_empty_oid   = TILE_SET.obj_to_oid[TILE_EMPTY]
+        tile_missing_oid = TILE_SET.obj_to_oid[TILE_MISSING]
+        tile_extra_oid   = TILE_SET.obj_to_oid[TILE_EXTRA]
+
+        gt_grid = self.gt_dynamics.tetris.grid
+        gt_occupied = gt_grid != tile_empty_oid
+
+        grid = np.where(occupied, gt_grid, tile_empty_oid).astype(np.uint8)
+        grid[gt_occupied & ~occupied] = tile_missing_oid
+        grid[occupied & ~gt_occupied] = tile_extra_oid
         self.tetris.grid = grid
 
         if self.queue_probe is not None:
