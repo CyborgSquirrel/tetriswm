@@ -15,12 +15,10 @@ from tetris import draw
 from collections import deque as Deque
 from utils import rng_derive_seed
 import lewm.jepa
-import lewm.patch_jepa
 import lewm.module
 import lewm.utils
 # Checkpoints were saved when lewm submodules were importable as top-level; remap so pickle can find them.
 sys.modules.setdefault("jepa", lewm.jepa)
-sys.modules.setdefault("patch_jepa", lewm.patch_jepa)
 sys.modules.setdefault("module", lewm.module)
 
 

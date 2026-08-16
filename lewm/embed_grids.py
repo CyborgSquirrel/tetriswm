@@ -21,11 +21,9 @@ from tqdm import tqdm
 
 import lewm.jepa
 import lewm.module
-import lewm.patch_jepa
 import lewm.utils
 
 sys.modules.setdefault("jepa", lewm.jepa)
-sys.modules.setdefault("patch_jepa", lewm.patch_jepa)
 sys.modules.setdefault("module", lewm.module)
 
 import stable_worldmodel as swm
