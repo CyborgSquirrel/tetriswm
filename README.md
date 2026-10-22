@@ -154,3 +154,8 @@ Built on [LeWorldModel](https://arxiv.org/abs/2603.19312) and
 from [DINO-WM](https://arxiv.org/abs/2411.04983) and
 PLDM (Sobal et al., NeurIPS 2025). Project work done at the Technical
 University of Munich.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Vendored and derived code keeps its own license:
+[`dinowm/`](dinowm/LICENSE) and [`lewm/`](lewm/LICENSE).
