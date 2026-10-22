@@ -37,3 +37,11 @@ outputs/
 wandb/
 
 x.env
+
+# Experiment artefacts
+multirun/
+lewm/outputs/
+lewm/wandb/
+lewm/eval_results/
+genai-tetris/
+.virtual_documents/

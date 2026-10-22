@@ -1,3 +1,5 @@
+> **Note:** this directory started from the upstream [LeWorldModel](https://github.com/lucas-maes/le-wm) code. Our changes (patch projector, Tetris training/eval/planning scripts) are described in the [top-level README](../README.md). The text below is upstream's original README.
+
 
 # LeWorldModel
 ### Stable End-to-End Joint-Embedding Predictive Architecture from Pixels
@@ -11,10 +13,6 @@
 </p>
 
 <br>
-
-<p align="center">
-  <img src="assets/lewm.gif" width="80%">
-</p>
 
 If you find this code useful, please reference it in your paper:
 ```
